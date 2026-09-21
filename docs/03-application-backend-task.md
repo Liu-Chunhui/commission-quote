@@ -1,6 +1,6 @@
 # Task B: Application Backend
 
-Implement the browser-facing API and outbound vendor call. Read the [shared contract and acceptance rules](01-development-approach.md), [Web API](../api/webapi.openapi.json), and [Vendor API](../test/mock/commissionquote/api/mock-commissionquote.openapi.json).
+Implement the browser-facing API and outbound vendor call. Read the [shared contract and acceptance rules](01-development-approach.md), [Web API](../api/webapi.openapi.json), and [Vendor API](../test/mock/commissionquote/api/commissionquote.openapi.json).
 
 ## Scope
 

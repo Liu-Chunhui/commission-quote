@@ -30,3 +30,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local mock credential; production mounts this from a secret manager.
+/test/mock/data/API_KEY
