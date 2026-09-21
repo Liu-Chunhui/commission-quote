@@ -38,18 +38,6 @@ Exercise the real UI and fetch lifecycle using controlled/intercepted Web API re
 
 **Done:** these checks, the production build, and the [common acceptance and handoff](01-development-approach.md#common-acceptance-and-handoff) pass without A or B. Include reproducible interception/mock setup and browser steps in the handoff.
 
-## Commands
-
-After implementation, run from `web/`:
-
-```sh
-npm install
-npm run build
-npm run dev
-```
-
-Commit the lockfile so clean installs can use `npm ci`.
-
 ## Implementation and handoff
 
 The single-column UI lives in `web/src/App.tsx`; `web/src/quotes.ts` owns the fetch boundary and UUIDv5 generation using browser Web Crypto. Native form constraints run before numeric conversion. Editing input clears the previous result; submitting disables the form until the request completes. No browser storage or commission calculation is used.
@@ -80,7 +68,7 @@ The root Makefile also provides these commands (GNU Make and `lsof` required):
 | `make web dev` | Start only the frontend in the foreground; Ctrl+C stops it |
 | `make web build` | Type-check and build the frontend |
 | `make web test` | Run the browser acceptance suite; install Chromium as described below on first use |
-| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, `web/playwright-report`, backend `bin/` and `gen/`, and legacy root `app`, `coverage.out`, and `coverage.html` |
+| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, `web/playwright-report`, root and mock-service `bin/` and `gen/`, and legacy root `app`, `coverage.out`, and `coverage.html` |
 
 The web commands install locked dependencies automatically when missing or when the manifests change. Cleanup preserves source files, the lockfile, other worktrees, and shared npm/Playwright caches.
 
@@ -110,7 +98,7 @@ For an interactive reproduction, run `npm test -- --debug --grep "submits typed 
 | Accessibility | Associated labels, focus outline/order, keyboard submission, invalid-field focus, and status/alert regions verified; actual screen-reader speech was not tested |
 | Build/install | `npm ci` and `npm run build` passed |
 
-Browser plugin was not available; verification used Playwright Chromium. Real-service integration, other browser engines, and screen-reader testing remain outside this independent handoff. No backend code was changed or tested.
+This frontend handoff used Playwright Chromium with intercepted API responses. Real-service integration, other browser engines, and screen-reader testing remain outside this independent handoff. Backend implementation and verification are recorded in [Task B](03-application-backend-task.md).
 
 ### AI Usage
 

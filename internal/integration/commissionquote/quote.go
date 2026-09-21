@@ -1,4 +1,4 @@
-package integration
+package commissionquote
 
 import (
 	"bytes"
@@ -23,16 +23,12 @@ type QuoteClient struct {
 	apiKey     string
 }
 
-func NewQuoteClient(baseURL, apiKey string) *QuoteClient {
+// NewQuoteClient requires a non-nil HTTP client with a timeout and redirects disabled.
+func NewQuoteClient(httpClient *http.Client, baseURL, apiKey string) *QuoteClient {
 	return &QuoteClient{
-		httpClient: &http.Client{
-			Timeout: 3 * time.Second,
-			CheckRedirect: func(request *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
-		quoteURL: strings.TrimRight(baseURL, "/") + "/quotes",
-		apiKey:   apiKey,
+		httpClient: httpClient,
+		quoteURL:   strings.TrimRight(baseURL, "/") + "/quotes",
+		apiKey:     apiKey,
 	}
 }
 

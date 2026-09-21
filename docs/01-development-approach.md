@@ -2,7 +2,7 @@
 
 Read this document first, then your task: [A: commission quote](02-commission-quote-task.md), [B: Application Backend](03-application-backend-task.md), or [C: Frontend](04-frontend-task.md). Shared decisions live here; task documents contain only their own scope, implementation context, and acceptance cases. Coding rules live in [AGENTS.md](../AGENTS.md).
 
-These documents define requirements, not completed implementation. Inspect existing files before creating them.
+This document defines shared requirements. Each task document records its implementation and verified handoff separately; passing independent task checks does not establish end-to-end integration. Inspect existing files before creating them.
 
 ## Development plan
 
@@ -35,7 +35,7 @@ The vendor's `QuoteRequest` schema is the shared field definition. Keep both spe
 
 ### Health checks
 
-Every microservice exposes `GET /health`, registered with its health handler; commission quote routing lives in `internal/app/router.go`. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
+Every microservice exposes `GET /health`, registered in its own `internal/app/router.go` with the handler in `internal/httpapi/health.go`. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
 
 ## Request validation contract
 
@@ -121,10 +121,12 @@ The frontend uses one generic failure flow, without vendor-specific status/code 
 | --- | --- | --- |
 | Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080; binds to `localhost` |
 | Application JSON `dependencies.commissionquote.baseUrl` | B | Required absolute HTTP(S) base URL; both profiles use `http://localhost:8090`; the client appends `/quotes` |
-| `VENDOR_ADDR` | A | `localhost:8090` |
-| `VENDOR_API_KEY` | A and B | Required environment variable; same private value in both processes |
+| Mock JSON `port` | A | Integer from 1 through 65535; both mock profiles use 8090; binds to `localhost`; no `VENDOR_ADDR` override |
+| Application JSON `apiKeyFile` | B | Required key file; both profiles use `../test/mock/data/API_KEY`, sharing the mock service's private key |
 
 The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports or base URLs stop startup. Base URLs must not contain credentials, query strings, or fragments. The file is the source of the application port and downstream base URL; `APP_ADDR` and `VENDOR_BASE_URL` are not used.
+
+The application resolves relative `apiKeyFile` paths against the selected profile directory and supports absolute mount paths. It loads the key into `Config.APIKey`, trims surrounding whitespace, and rejects missing, unreadable, or empty key files. Credentials are not read from JSON values or environment variables, included in serialized configuration, or logged.
 
 The frontend runs on port 5173 and proxies `/api` to the application. Mock failure profiles belong only to A:
 

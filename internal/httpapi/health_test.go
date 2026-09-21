@@ -23,7 +23,7 @@ func TestHealth(t *testing.T) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 
-	app.NewRouter().ServeHTTP(response, request)
+	app.NewRouter(nil).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", response.Code)
@@ -44,7 +44,7 @@ func TestRequestLogs(t *testing.T) {
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
-	router := app.NewRouter()
+	router := app.NewRouter(nil)
 	requestIDs := make(map[string]bool)
 	cases := []struct {
 		name      string

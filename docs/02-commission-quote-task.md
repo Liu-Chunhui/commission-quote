@@ -32,7 +32,7 @@ Exercise the real HTTP handler directly; use the shared validation cases and the
 
 ## Commands
 
-Run this independent module's checks from `test/mock/commissionquote/` after implementation; root Go tests do not include it. Functional tests are required, but the mock service has no high-coverage target. Provision the private key file referenced by the profile before startup:
+Use Go 1.24 or newer for this independent module. Run its checks from `test/mock/commissionquote/`; root Go tests do not include it. Functional tests are required, but the mock service has no high-coverage target. Provision the private key file referenced by the profile before startup:
 
 ```sh
 gofmt -w cmd internal/app internal/httpapi internal/config
@@ -43,9 +43,11 @@ go run ./cmd -config config/dev.json
 
 Use `-config config/ci.json` to select the CI profile.
 
+From the repository root, `make quote dev` starts the service with the dev profile and `make quote build` writes `test/mock/commissionquote/bin/quote`. Run the built executable from the mock module directory so the default profile resolves correctly. `make clean` also removes this service's `bin/` and `gen/` directories. There is no `make quote test`; run the Go tests from the mock module as shown above.
+
 ## Task A handoff — 2026-09-21
 
-The independent service is implemented. Startup and manual HTTP steps are in [README](../test/mock/commissionquote/README.md#run). The supplied specification was moved unchanged from `test/commissionquote/api/commissionquote.openapi.json` to the service-owned path linked above.
+The independent service is implemented. Startup and manual HTTP steps are in [README](../test/mock/commissionquote/README.md#run); its standalone specification is `test/mock/commissionquote/api/commissionquote.openapi.json`.
 
 | Reproducible check | Expected | Actual |
 | --- | --- | --- |

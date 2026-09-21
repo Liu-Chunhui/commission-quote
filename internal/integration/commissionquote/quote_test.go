@@ -1,4 +1,4 @@
-package integration
+package commissionquote
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ func TestGenerateQuote(t *testing.T) {
 	var calls atomic.Int32
 
 	input := QuoteRequest{LoanAmount: 4001, LoanTermInMonths: 36, RiskBand: "low"}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var received QuoteRequest
 
 		calls.Add(1)
@@ -44,7 +44,9 @@ func TestGenerateQuote(t *testing.T) {
 		fmt.Fprint(w, `{"quoteId":"opaque-id","commissionRate":0.01,"totalCommission":40.01}`)
 	}))
 	defer server.Close()
-	client := NewQuoteClient(server.URL+"/", "test-only-key")
+	httpClient := server.Client()
+	httpClient.Timeout = 3 * time.Second
+	client := NewQuoteClient(httpClient, server.URL+"/", "test-only-key")
 	for range 2 {
 		quote, err := client.GenerateQuote(context.Background(), "same-key", input)
 		if err != nil {
@@ -72,7 +74,7 @@ func TestGenerateQuoteAuthentication(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, key := range []string{"", "wrong-test-key"} {
-		client := NewQuoteClient(server.URL, key)
+		client := NewQuoteClient(newTestHTTPClient(), server.URL, key)
 		if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
 			t.Fatal("authentication rejection must propagate as a failure")
 		}
@@ -96,7 +98,7 @@ func TestGenerateQuoteDoesNotRetryConnectionFailure(t *testing.T) {
 		fmt.Fprint(w, `{"quoteId":"id","commissionRate":0.02,"totalCommission":200}`)
 	}))
 	defer server.Close()
-	client := NewQuoteClient(server.URL, "test-only-key")
+	client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 	input := QuoteRequest{10000, 36, "medium"}
 	if _, err := client.GenerateQuote(context.Background(), "test-key", input); err != nil {
 		t.Fatal(err)
@@ -148,7 +150,7 @@ func TestGenerateQuoteFailures(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer server.Close()
-			client := NewQuoteClient(server.URL, "test-only-key")
+			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			quote, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"})
 			if err == nil || err.Error() != "unable to generate a quote" {
 				t.Fatal("expected the generic quote failure")
@@ -185,7 +187,7 @@ func TestGenerateQuoteLogs(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer server.Close()
-			client := NewQuoteClient(server.URL, "test-only-key")
+			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			ctx := context.WithValue(context.Background(), middleware.RequestIDKey, "request-42")
 			_, err := client.GenerateQuote(ctx, "test-key", QuoteRequest{10000, 36, "medium"})
 			if (err != nil) != (tc.status != 200) {
@@ -244,7 +246,7 @@ func TestGenerateQuoteNetworkFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	server.Close()
 	for _, endpoint := range []string{server.URL, "://invalid"} {
-		client := NewQuoteClient(endpoint, "test-only-key")
+		client := NewQuoteClient(newTestHTTPClient(), endpoint, "test-only-key")
 		_, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"})
 		if err == nil || err.Error() != "unable to generate a quote" {
 			t.Fatal("network and request construction failures must return a safe error")
@@ -278,7 +280,7 @@ func TestGenerateQuotePassThrough(t *testing.T) {
 				fmt.Fprint(w, tc.response)
 			}))
 			defer server.Close()
-			client := NewQuoteClient(server.URL, "test-only-key")
+			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			quote, err := client.GenerateQuote(context.Background(), "test-key", tc.input)
 			if err != nil || quote != tc.want {
 				t.Fatalf("response must be returned without recalculation: quote=%+v err=%v", quote, err)
@@ -293,7 +295,7 @@ func TestGenerateQuoteReadFailure(t *testing.T) {
 		fmt.Fprint(w, `{"quoteId":"truncated`)
 	}))
 	defer server.Close()
-	client := NewQuoteClient(server.URL, "test-only-key")
+	client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 	if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
 		t.Fatal("truncated response must fail")
 	}
@@ -312,7 +314,7 @@ func TestGenerateQuoteRedirect(t *testing.T) {
 				http.Redirect(w, r, target.URL, status)
 			}))
 			defer server.Close()
-			client := NewQuoteClient(server.URL, "test-only-key")
+			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
 				t.Fatal("unexpected redirect must fail")
 			}
@@ -340,15 +342,13 @@ func TestGenerateQuoteTimeoutAndCancellation(t *testing.T) {
 				close(canceled)
 			}))
 			defer server.Close()
-			client := NewQuoteClient(server.URL, "test-only-key")
-			if client.httpClient == nil || client.httpClient.Timeout != 3*time.Second {
-				t.Fatal("client must have a three-second default timeout")
-			}
+			httpClient := newTestHTTPClient()
+			client := NewQuoteClient(httpClient, server.URL, "test-only-key")
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if mode != "cancellation" {
-				client.httpClient.Timeout = 100 * time.Millisecond
+				httpClient.Timeout = 100 * time.Millisecond
 			} else {
 				go func() {
 					<-started
@@ -367,5 +367,14 @@ func TestGenerateQuoteTimeoutAndCancellation(t *testing.T) {
 				t.Fatal("outbound request was not canceled")
 			}
 		})
+	}
+}
+
+func newTestHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 3 * time.Second,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 }

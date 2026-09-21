@@ -1,4 +1,4 @@
-package integration
+package commissionquote
 
 type QuoteRequest struct {
 	LoanAmount       int    `json:"loanAmount"`

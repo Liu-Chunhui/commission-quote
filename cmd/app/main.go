@@ -10,6 +10,7 @@ import (
 
 	"commissionquote/internal/app"
 	"commissionquote/internal/config"
+	"commissionquote/internal/integration/commissionquote"
 )
 
 func main() {
@@ -30,9 +31,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	httpClient := &http.Client{
+		Timeout: 3 * time.Second,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	quoteClient := commissionquote.NewQuoteClient(httpClient, appConfig.Dependencies.CommissionQuote.BaseURL, appConfig.APIKey)
 	server := &http.Server{
 		Addr:              "localhost:" + strconv.Itoa(appConfig.Port),
-		Handler:           app.NewRouter(),
+		Handler:           app.NewRouter(quoteClient),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
