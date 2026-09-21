@@ -59,7 +59,7 @@
                 "badRequestTrigger": {
                   "summary": "Returns 400 only in loanAmount mode",
                   "value": {
-                    "loanAmount": 100400,
+                    "loanAmount": "100400",
                     "loanTermInMonths": 36,
                     "riskBand": "medium"
                   }
@@ -67,7 +67,7 @@
                 "rateLimitTrigger": {
                   "summary": "Returns 429 only in loanAmount mode",
                   "value": {
-                    "loanAmount": 100429,
+                    "loanAmount": "100429",
                     "loanTermInMonths": 36,
                     "riskBand": "medium"
                   }
@@ -75,7 +75,7 @@
                 "standardQuote": {
                   "summary": "Standard valid request",
                   "value": {
-                    "loanAmount": 10000,
+                    "loanAmount": "10000",
                     "loanTermInMonths": 36,
                     "riskBand": "medium"
                   }
@@ -83,7 +83,7 @@
                 "largerAmount": {
                   "summary": "Larger valid amount with the same validation rules",
                   "value": {
-                    "loanAmount": 750000,
+                    "loanAmount": "750000",
                     "loanTermInMonths": 360,
                     "riskBand": "medium"
                   }
@@ -91,7 +91,7 @@
                 "commissionCents": {
                   "summary": "Integer loan amount producing commission cents",
                   "value": {
-                    "loanAmount": 4001,
+                    "loanAmount": "4001",
                     "loanTermInMonths": 36,
                     "riskBand": "low"
                   }
@@ -112,22 +112,22 @@
                   "standardQuote": {
                     "value": {
                       "quoteId": "quote-example-standard",
-                      "commissionRate": 0.02,
-                      "totalCommission": 200
+                      "commissionRate": "0.02",
+                      "totalCommission": "200"
                     }
                   },
                   "largerAmount": {
                     "value": {
                       "quoteId": "quote-example-larger",
-                      "commissionRate": 0.02,
-                      "totalCommission": 15000
+                      "commissionRate": "0.02",
+                      "totalCommission": "15000"
                     }
                   },
                   "commissionCents": {
                     "value": {
                       "quoteId": "quote-example-cents",
-                      "commissionRate": 0.01,
-                      "totalCommission": 40.01
+                      "commissionRate": "0.01",
+                      "totalCommission": "40.01"
                     }
                   }
                 }
@@ -305,10 +305,10 @@
         "additionalProperties": true,
         "properties": {
           "loanAmount": {
-            "type": "integer",
-            "minimum": 4000,
-            "maximum": 10000000,
-            "description": "Whole AUD dollars, 4000 through 10000000 inclusive. Fractional amounts are not accepted."
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^([4-9][0-9]{3}|[1-9][0-9]{4,6}|10000000)$",
+            "description": "Exact decimal string for whole AUD dollars, 4000 through 10000000 inclusive. No sign, leading zeroes, decimal point, or exponent notation."
           },
           "loanTermInMonths": {
             "type": "integer",
@@ -342,18 +342,20 @@
             "description": "Opaque identifier generated on the first success for a key and unchanged on replay; no UUID or other format is promised."
           },
           "commissionRate": {
-            "type": "number",
+            "type": "string",
+            "format": "decimal",
             "enum": [
-              0.01,
-              0.02,
-              0.03
+              "0.01",
+              "0.02",
+              "0.03"
             ],
-            "description": "Decimal fraction; 0.02 means 2%."
+            "description": "Exact decimal fraction string; \"0.02\" means 2%."
           },
           "totalCommission": {
-            "type": "number",
-            "multipleOf": 0.01,
-            "description": "AUD commission with at most two decimal places. JSON need not preserve trailing zeroes."
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$",
+            "description": "Exact AUD decimal string with at most two decimal places, without exponent notation. Trailing zeroes need not be preserved."
           }
         }
       },
@@ -401,12 +403,12 @@
     },
     "amountTriggers": [
       {
-        "loanAmount": 100400,
+        "loanAmount": "100400",
         "status": 400,
         "code": "INVALID_REQUEST"
       },
       {
-        "loanAmount": 100429,
+        "loanAmount": "100429",
         "status": 429,
         "code": "TOO_MANY_REQUESTS"
       }
@@ -481,7 +483,7 @@
       "encoding": "UTF-8; validated integers in ordinary decimal form, exact lowercase risk band, no spaces. No timestamp or random component.",
       "output": "Lowercase hyphenated UUID",
       "example": {
-        "loanAmount": 10000,
+        "loanAmount": "10000",
         "loanTermInMonths": 36,
         "riskBand": "medium",
         "name": "10000|36|medium",

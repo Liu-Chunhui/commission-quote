@@ -18,7 +18,22 @@ import (
 	"commissionquote/internal/integration/commissionquote"
 )
 
-const _validQuoteBody = `{"loanAmount":10000,"loanTermInMonths":36,"riskBand":"medium"}`
+const _validQuoteBody = `{"loanAmount":"10000","loanTermInMonths":36,"riskBand":"medium"}`
+
+func TestQuoteDecimalPrecision(t *testing.T) {
+	const responseBody = `{"quoteId":"exact-cents","commissionRate":"0.02","totalCommission":"9007199254740993.01"}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, responseBody)
+	}))
+	defer server.Close()
+	router := app.NewRouter(commissionquote.NewQuoteClient(quoteHTTPClient(), server.URL, "test-only-key"))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, quoteRequest(_validQuoteBody, "decimal-precision"))
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != responseBody {
+		t.Fatalf("decimal precision lost: %d %s", response.Code, response.Body.String())
+	}
+}
 
 func TestQuoteInvalidRequest(t *testing.T) {
 	var calls atomic.Int32
@@ -57,7 +72,7 @@ func TestQuoteInvalidRequest(t *testing.T) {
 		name   string
 		values []string
 	}{
-		{"loanAmount", []string{"", "null", "true", "[]", "{}", `"10000"`, "3999", "10000001", "4000.5", "-1", "1e100"}},
+		{"loanAmount", []string{"", "null", "true", "[]", "{}", "10000", `"3999"`, `"10000001"`, `"4000.5"`, `"4000.0000000000000000001"`, `"-1"`, `"1e100"`, `"04000"`, `"4000.00"`, `"NaN"`, `"Infinity"`}},
 		{"loanTermInMonths", []string{"", "null", "true", "[]", "{}", `"36"`, "11", "361", "12.5", "-1"}},
 		{"riskBand", []string{"", "null", "true", "[]", "{}", "1", `""`, `"Medium"`, `"medium "`, `"unknown"`}},
 	} {
@@ -112,7 +127,7 @@ func TestQuoteLogs(t *testing.T) {
 		want   int
 		levels []string
 	}{
-		{"success", 200, `{"quoteId":"opaque","commissionRate":0.02,"totalCommission":200}`, "key", 200, []string{"INFO", "INFO", "INFO", "INFO"}},
+		{"success", 200, `{"quoteId":"opaque","commissionRate":"0.02","totalCommission":"200"}`, "key", 200, []string{"INFO", "INFO", "INFO", "INFO"}},
 		{"dependency failure", 503, `{"error":{"code":"VENDOR_UNAVAILABLE","message":"private-detail"}}`, "key", 500, []string{"INFO", "INFO", "ERROR", "INFO", "INFO"}},
 		{"invalid request", 200, "", "", 400, []string{"INFO", "ERROR", "INFO"}},
 	} {
@@ -207,21 +222,21 @@ func TestQuoteSuccess(t *testing.T) {
 					t.Error(err)
 				}
 
-				if len(input) != 3 || input["loanAmount"] != float64(tc.amount) || input["loanTermInMonths"] != float64(tc.term) || input["riskBand"] != tc.risk {
+				if len(input) != 3 || input["loanAmount"] != fmt.Sprint(tc.amount) || input["loanTermInMonths"] != float64(tc.term) || input["riskBand"] != tc.risk {
 					t.Error("validated fields must be forwarded unchanged; extras ignored")
 				}
-				fmt.Fprint(w, `{"quoteId":"opaque-result","commissionRate":0.01,"totalCommission":40.01}`)
+				fmt.Fprint(w, `{"quoteId":"opaque-result","commissionRate":"0.01","totalCommission":"40.01"}`)
 			}))
 			defer server.Close()
 			router := app.NewRouter(commissionquote.NewQuoteClient(quoteHTTPClient(), server.URL, "test-only-key"))
 			for range 2 {
-				body := fmt.Sprintf(`{"loanAmount":%d,"loanTermInMonths":%d,"riskBand":%q,"ignored":true}`, tc.amount, tc.term, tc.risk)
+				body := fmt.Sprintf(`{"loanAmount":"%d","loanTermInMonths":%d,"riskBand":%q,"ignored":true}`, tc.amount, tc.term, tc.risk)
 				request := quoteRequest(body, tc.key)
 				request.Header.Set("Content-Type", "application/json; charset=utf-8")
 				request.Header.Set("api-key", "untrusted-browser-key")
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
-				if response.Code != 200 || response.Header().Get("Content-Type") != "application/json" || strings.TrimSpace(response.Body.String()) != `{"quoteId":"opaque-result","commissionRate":0.01,"totalCommission":40.01}` {
+				if response.Code != 200 || response.Header().Get("Content-Type") != "application/json" || strings.TrimSpace(response.Body.String()) != `{"quoteId":"opaque-result","commissionRate":"0.01","totalCommission":"40.01"}` {
 					t.Fatalf("quote was not returned unchanged: %d %s", response.Code, response.Body.String())
 				}
 			}
@@ -290,8 +305,8 @@ func TestQuoteUpstreamFailures(t *testing.T) {
 		{"malformed error", 500, `{`},
 		{"malformed quote", 200, `{`},
 		{"missing quote fields", 200, `{}`},
-		{"invalid quote fields", 200, `{"quoteId":1,"commissionRate":0.02,"totalCommission":200}`},
-		{"invalid commission", 200, `{"quoteId":"opaque","commissionRate":0.02,"totalCommission":1.234}`},
+		{"invalid quote fields", 200, `{"quoteId":1,"commissionRate":"0.02","totalCommission":"200"}`},
+		{"invalid commission", 200, `{"quoteId":"opaque","commissionRate":"0.02","totalCommission":"1.234"}`},
 		{"truncated body", 200, `{"quoteId":`},
 		{"redirect", 302, ""},
 		{"connection failure", 0, ""},
@@ -333,7 +348,7 @@ func TestQuoteWriteFailure(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"quoteId":"opaque","commissionRate":0.02,"totalCommission":200}`)
+		fmt.Fprint(w, `{"quoteId":"opaque","commissionRate":"0.02","totalCommission":"200"}`)
 	}))
 	defer server.Close()
 	router := app.NewRouter(commissionquote.NewQuoteClient(quoteHTTPClient(), server.URL, "test-only-key"))

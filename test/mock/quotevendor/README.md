@@ -55,6 +55,10 @@ npm --prefix web run test:integration
 
 The integration check uses real browser requests through both running services. It verifies the example, replay after reload, both dev failures, recovery, and the absence of the private key header from browser requests. It prints the path to a success screenshot saved in the system temporary directory.
 
+For a container check, select a copy of the mock CI profile with `failureMode: "loanAmount"` using `QUOTEVENDOR_CONFIG`, then run `APP_URL=http://localhost:8088 npm --prefix web run test:integration`. This also checks exact decimal-string transmission and the AUD 200.06 result for 10003 / 36 / medium. Restore the default CI profile after testing.
+
+Decimal migration verified on 2026-09-22: both Go suites passed with race detection and vet, production `internal/` files retained 100% statement coverage, all 18 Playwright tests passed, and frontend/container builds passed. The real container browser flow passed success, exact cents, replay, both deterministic failures, and recovery. Precision regressions cover values beyond JavaScript's safe integer range and fractions too small for binary floats to distinguish.
+
 Verified on 2026-09-21: these flows passed in Chromium. The successful quote was also submitted and visibly confirmed in Chrome, with no console errors or warnings. Ctrl+C released ports 8090, 8080, and 5173; the stack restarted successfully. CI/random-mode end-to-end simulation and other browser engines are not covered by this dev check.
 
 Independent checks and builds, from the repository root:
@@ -114,7 +118,7 @@ key_path = profile_path.parent / profile["apiKeyFile"]
 connection = http.client.HTTPConnection("localhost", profile["port"], timeout=3)
 try:
     connection.request("POST", "/quotes", json.dumps({
-        "loanAmount": 10000, "loanTermInMonths": 36, "riskBand": "medium"
+        "loanAmount": "10000", "loanTermInMonths": 36, "riskBand": "medium"
     }), {
         "Content-Type": "application/json",
         "api-key": key_path.read_text().strip(),
@@ -127,7 +131,7 @@ finally:
 PY_QUOTE
 ```
 
-Expected: a nonempty `quoteId`, `commissionRate: 0.02`, and `totalCommission: 200`. Repeat unchanged to obtain the same quote. Changing a field under that key returns 409; use a fresh printable key for unrelated manual cases. Restarting clears stored quotes. To verify errors, use missing/wrong authentication (401), amount 3999 (400), and the two dev triggers with fresh keys (400/429).
+Expected: a nonempty `quoteId`, `commissionRate: "0.02"`, and `totalCommission: "200"`. Repeat unchanged to obtain the same quote. Changing a field under that key returns 409; use a fresh printable key for unrelated manual cases. Restarting clears stored quotes. To verify errors, use missing/wrong authentication (401), amount 3999 (400), and the two dev triggers with fresh keys (400/429).
 
 Startup must fail for missing/invalid `port` (integer 1–65535), a missing `apiKeyFile`, unreadable/empty key file, missing/malformed profile, or invalid random-mode rate. `loanAmount` mode accepts any valid JSON value for its ignored rate. JSON logs use UTC timestamps and go to stderr with a distinct request ID per HTTP attempt, start/completion status and timing, quote generation/replay decisions, and one ERROR per detected failure. No API keys or request bodies are logged. Configuration errors use fixed messages; HTTP server startup failures include the underlying error in the `cause` field.
 
@@ -135,7 +139,7 @@ Startup must fail for missing/invalid `port` (integer 1–65535), a missing `api
 
 The implemented flow is browser → application → quotevendor. Both Go services use chi routing and standard-library HTTP, configuration, JSON, and logging. The application validates browser input and returns every downstream failure as the same generic 500 response, with a three-second timeout and no automatic retries. There is no database, staff authentication, or quote history.
 
-Routes, field limits, rates, fraction units, monetary calculation, idempotency, opaque IDs, and failure probabilities are project assumptions, not vendor requirements from the challenge. Rates are 1%/2%/3% for low/medium/high; calculate integer cents as loan amount times 1/2/3, then return AUD dollars. Term is validated but does not affect commission.
+Routes, field limits, rates, fraction units, monetary calculation, idempotency, opaque IDs, and failure probabilities are project assumptions, not vendor requirements from the challenge. Rates are 1%/2%/3% for low/medium/high; multiply the decimal loan amount by the decimal commission rate to return exact AUD dollars. Both Go services use `shopspring/decimal`, the frontend uses `decimal.js`, and both APIs transmit monetary fields as decimal strings. Term is validated but does not affect commission.
 
 One mutex protects the in-memory input bindings and successful quotes. Failures keep the binding and can be retried; successful replays bypass simulation. There is no TTL, persistence, cross-instance coordination, artificial delay, or automatic retry. Memory grows with distinct valid keys until restart; this is suitable for the local challenge mock.
 

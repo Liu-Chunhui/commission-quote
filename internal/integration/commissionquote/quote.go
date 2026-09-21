@@ -7,15 +7,17 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"math"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shopspring/decimal"
 )
 
 var errQuoteFailed = errors.New("unable to generate a quote")
+var _commissionPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]{1,2})?$`)
 
 type QuoteClient struct {
 	httpClient *http.Client
@@ -36,9 +38,9 @@ func NewQuoteClient(httpClient *http.Client, baseURL, apiKey string) *QuoteClien
 func (c *QuoteClient) GenerateQuote(ctx context.Context, key string, input QuoteRequest) (QuoteResponse, error) {
 	var status int
 	var quote struct {
-		QuoteID         string   `json:"quoteId"`
-		CommissionRate  float64  `json:"commissionRate"`
-		TotalCommission *float64 `json:"totalCommission"`
+		QuoteID         string  `json:"quoteId"`
+		CommissionRate  string  `json:"commissionRate"`
+		TotalCommission *string `json:"totalCommission"`
 	}
 
 	started := time.Now().UTC()
@@ -57,7 +59,7 @@ func (c *QuoteClient) GenerateQuote(ctx context.Context, key string, input Quote
 		)
 	}()
 
-	// QuoteRequest contains only integers and strings, so marshaling cannot fail.
+	// Validated decimals, integers, and strings always marshal successfully.
 	body, _ := json.Marshal(input)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.quoteURL, bytes.NewReader(body))
 	if err != nil {
@@ -110,20 +112,20 @@ func (c *QuoteClient) GenerateQuote(ctx context.Context, key string, input Quote
 		return QuoteResponse{}, errQuoteFailed
 	}
 
-	if quote.QuoteID == "" || (quote.CommissionRate != 0.01 && quote.CommissionRate != 0.02 && quote.CommissionRate != 0.03) || quote.TotalCommission == nil {
+	if quote.QuoteID == "" || (quote.CommissionRate != "0.01" && quote.CommissionRate != "0.02" && quote.CommissionRate != "0.03") || quote.TotalCommission == nil {
 		logger.ErrorContext(ctx, "Quote service call failed", "cause", "missing or invalid quote fields", "status", status)
 		return QuoteResponse{}, errQuoteFailed
 	}
 
-	if math.Round(*quote.TotalCommission*100)/100 != *quote.TotalCommission {
-		logger.ErrorContext(ctx, "Quote service call failed", "cause", "commission contains fractional cents", "status", status)
+	if !_commissionPattern.MatchString(*quote.TotalCommission) {
+		logger.ErrorContext(ctx, "Quote service call failed", "cause", "commission must be a decimal string with at most two decimal places", "status", status)
 		return QuoteResponse{}, errQuoteFailed
 	}
 
 	return QuoteResponse{
 		QuoteID:         quote.QuoteID,
-		CommissionRate:  quote.CommissionRate,
-		TotalCommission: *quote.TotalCommission,
+		CommissionRate:  decimal.RequireFromString(quote.CommissionRate),
+		TotalCommission: decimal.RequireFromString(*quote.TotalCommission),
 	}, nil
 }
 

@@ -1,11 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import Decimal from 'decimal.js';
 import { generateQuote, type Quote, type QuoteRequest } from './quotes';
-
-const currency = new Intl.NumberFormat('en-AU', {
-  style: 'currency', currency: 'AUD', currencyDisplay: 'code',
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-});
-const percentage = new Intl.NumberFormat('en-AU', { style: 'percent' });
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -35,8 +30,16 @@ export default function App() {
 
     // Required, min/max and step constraints reject empty/invalid fields before conversion.
     const fields = new FormData(form);
+    const loanAmount = new Decimal(String(fields.get('loanAmount')));
+    if (!loanAmount.isInteger() || loanAmount.lt('4000') || loanAmount.gt('10000000')) {
+      setInvalidField('loanAmount');
+      setError('Loan amount (AUD): Enter a whole-dollar amount between 4000 and 10000000.');
+      (form.elements.namedItem('loanAmount') as HTMLInputElement).focus();
+      return;
+    }
+
     const request: QuoteRequest = {
-      loanAmount: Number(fields.get('loanAmount')),
+      loanAmount,
       loanTermInMonths: Number(fields.get('loanTermInMonths')),
       riskBand: fields.get('riskBand') as QuoteRequest['riskBand'],
     };
@@ -121,11 +124,11 @@ export default function App() {
             <dl>
               <div className="total">
                 <dt>Total commission</dt>
-                <dd>{currency.format(quote.totalCommission)}</dd>
+                <dd>AUD {quote.totalCommission.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</dd>
               </div>
               <div>
                 <dt>Commission rate</dt>
-                <dd>{percentage.format(quote.commissionRate)}</dd>
+                <dd>{quote.commissionRate.times('100').toFixed(0)}%</dd>
               </div>
               <div>
                 <dt>Quote ID</dt>

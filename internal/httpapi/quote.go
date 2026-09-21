@@ -6,11 +6,15 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"regexp"
 
 	"commissionquote/internal/integration/commissionquote"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shopspring/decimal"
 )
+
+var _loanAmountPattern = regexp.MustCompile(`^[1-9][0-9]{3,7}$`)
 
 type QuoteHandler struct {
 	client *commissionquote.QuoteClient
@@ -46,6 +50,7 @@ func (h *QuoteHandler) validateQuoteRequest(r *http.Request, key string) (commis
 	var fields map[string]json.RawMessage
 	var extra json.RawMessage
 	var input commissionquote.QuoteRequest
+	var amount string
 
 	if len(key) < 1 || len(key) > 255 {
 		return input, "idempotency-key must contain 1 to 255 printable ASCII characters without spaces."
@@ -71,8 +76,12 @@ func (h *QuoteHandler) validateQuoteRequest(r *http.Request, key string) (commis
 		return input, "Request body must contain one JSON object."
 	}
 
-	if err := json.Unmarshal(fields["loanAmount"], &input.LoanAmount); err != nil || input.LoanAmount < 4000 || input.LoanAmount > 10000000 {
-		return input, "loanAmount must be an integer between AUD 4000 and AUD 10000000."
+	if err := json.Unmarshal(fields["loanAmount"], &amount); err != nil || !_loanAmountPattern.MatchString(amount) {
+		return input, "loanAmount must be a decimal string representing whole AUD dollars between 4000 and 10000000."
+	}
+	input.LoanAmount = decimal.RequireFromString(amount)
+	if input.LoanAmount.LessThan(decimal.NewFromInt(4000)) || input.LoanAmount.GreaterThan(decimal.NewFromInt(10000000)) {
+		return input, "loanAmount must be a decimal string representing whole AUD dollars between 4000 and 10000000."
 	}
 
 	if err := json.Unmarshal(fields["loanTermInMonths"], &input.LoanTermInMonths); err != nil || input.LoanTermInMonths < 12 || input.LoanTermInMonths > 360 {

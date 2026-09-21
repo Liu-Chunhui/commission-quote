@@ -9,18 +9,23 @@ import (
 	mathrand "math/rand/v2"
 	"mime"
 	"net/http"
+	"regexp"
+
+	"github.com/shopspring/decimal"
 )
 
+var _loanAmountPattern = regexp.MustCompile(`^[1-9][0-9]{3,7}$`)
+
 type quoteRequest struct {
-	LoanAmount       int
+	LoanAmount       decimal.Decimal
 	LoanTermInMonths int
 	RiskBand         string
 }
 
 type quoteResponse struct {
-	QuoteID         string  `json:"quoteId"`
-	CommissionRate  float64 `json:"commissionRate"`
-	TotalCommission float64 `json:"totalCommission"`
+	QuoteID         string          `json:"quoteId"`
+	CommissionRate  decimal.Decimal `json:"commissionRate"`
+	TotalCommission decimal.Decimal `json:"totalCommission"`
 }
 
 func (s *Handler) Quote(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +65,7 @@ func (s *Handler) generate(ctx context.Context, input quoteRequest, key string) 
 	defer s.mu.Unlock()
 
 	stored, exists := s.quotes[key]
-	if exists && stored.input != input {
+	if exists && (!stored.input.LoanAmount.Equal(input.LoanAmount) || stored.input.LoanTermInMonths != input.LoanTermInMonths || stored.input.RiskBand != input.RiskBand) {
 		return quoteResponse{}, &responseError{http.StatusConflict, "IDEMPOTENCY_CONFLICT", "This request key was already used with different loan details. Submit a new quote."}
 	}
 
@@ -71,28 +76,27 @@ func (s *Handler) generate(ctx context.Context, input quoteRequest, key string) 
 
 	s.quotes[key] = storedQuote{input: input}
 	if s.config.FailureMode == "loanAmount" {
-		switch input.LoanAmount {
-		case 100400:
+		switch {
+		case input.LoanAmount.Equal(decimal.NewFromInt(100400)):
 			return quoteResponse{}, &responseError{http.StatusBadRequest, "INVALID_REQUEST", "Simulated vendor bad request."}
-		case 100429:
+		case input.LoanAmount.Equal(decimal.NewFromInt(100429)):
 			return quoteResponse{}, &responseError{http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Too many quote requests. Please try again later."}
 		}
 	} else if mathrand.Float64() < s.config.FailureRate {
 		return quoteResponse{}, &responseError{http.StatusServiceUnavailable, "VENDOR_UNAVAILABLE", "The quote provider is temporarily unavailable."}
 	}
 
-	ratePercent := 1
+	rate := decimal.New(1, -2)
 	switch input.RiskBand {
 	case "medium":
-		ratePercent = 2
+		rate = decimal.New(2, -2)
 	case "high":
-		ratePercent = 3
+		rate = decimal.New(3, -2)
 	}
-	commissionCents := input.LoanAmount * ratePercent
 	quote := quoteResponse{
 		QuoteID:         rand.Text(),
-		CommissionRate:  float64(ratePercent) / 100,
-		TotalCommission: float64(commissionCents) / 100,
+		CommissionRate:  rate,
+		TotalCommission: input.LoanAmount.Mul(rate),
 	}
 	s.quotes[key] = storedQuote{input: input, quote: quote}
 	requestLogger(ctx).Info("Quote generated", "operation", "generate_quote")
@@ -103,6 +107,7 @@ func (s *Handler) readQuoteRequest(r *http.Request) (quoteRequest, string) {
 	var fields map[string]json.RawMessage
 	var input quoteRequest
 	var trailing any
+	var amount string
 
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -118,8 +123,12 @@ func (s *Handler) readQuoteRequest(r *http.Request) (quoteRequest, string) {
 		return input, "Request body must contain one JSON object without trailing values."
 	}
 
-	if err := json.Unmarshal(fields["loanAmount"], &input.LoanAmount); err != nil || input.LoanAmount < 4000 || input.LoanAmount > 10000000 {
-		return input, "loanAmount must be an integer between AUD 4000 and AUD 10000000."
+	if err := json.Unmarshal(fields["loanAmount"], &amount); err != nil || !_loanAmountPattern.MatchString(amount) {
+		return input, "loanAmount must be a decimal string representing whole AUD dollars between 4000 and 10000000."
+	}
+	input.LoanAmount = decimal.RequireFromString(amount)
+	if input.LoanAmount.LessThan(decimal.NewFromInt(4000)) || input.LoanAmount.GreaterThan(decimal.NewFromInt(10000000)) {
+		return input, "loanAmount must be a decimal string representing whole AUD dollars between 4000 and 10000000."
 	}
 
 	if err := json.Unmarshal(fields["loanTermInMonths"], &input.LoanTermInMonths); err != nil || input.LoanTermInMonths < 12 || input.LoanTermInMonths > 360 {

@@ -41,7 +41,7 @@ Every microservice exposes `GET /health`, registered in its own `internal/app/ro
 
 ```json
 {
-  "loanAmount": 10000,
+  "loanAmount": "10000",
   "loanTermInMonths": 36,
   "riskBand": "medium"
 }
@@ -49,11 +49,11 @@ Every microservice exposes `GET /health`, registered in its own `internal/app/ro
 
 | Field | Rule |
 | --- | --- |
-| `loanAmount` | Required integer, AUD 4000–10000000 inclusive |
+| `loanAmount` | Required decimal string for whole AUD dollars, 4000–10000000 inclusive |
 | `loanTermInMonths` | Required integer, 12–360 months inclusive |
 | `riskBand` | Required string: exactly `low`, `medium`, or `high` |
 
-Require one JSON object. Reject missing/null fields, wrong types, numeric strings, fractional amounts/terms, out-of-range values, malformed JSON, and trailing JSON values. Ignore extra fields. Do not round, clamp, normalize risk labels, infer risk, or supply defaults. Apply one generic rule set without loan categories or cross-field eligibility rules.
+Require one JSON object. Reject missing/null fields, wrong types (including JSON numbers for money and strings for the term), fractional amounts/terms, out-of-range values, malformed JSON, and trailing JSON values. Ignore extra fields. Do not round, clamp, normalize risk labels, infer risk, or supply defaults. Apply one generic rule set without loan categories or cross-field eligibility rules.
 
 Each service validates at its HTTP boundary; internal code uses the validated values. Frontend validation provides usability and does not replace server validation. Invalid application input must not call the vendor.
 
@@ -61,7 +61,7 @@ Each service validates at its HTTP boundary; internal code uses the validated va
 
 | Field | Accept | Reject |
 | --- | --- | --- |
-| `loanAmount` | `4000`, `10000`, `10000000` | `3999`, `10000001`, `4000.5` |
+| `loanAmount` | `"4000"`, `"10000"`, `"10000000"` | `4000`, `"3999"`, `"10000001"`, `"4000.5"`, `"04000"`, `"4e3"` |
 | `loanTermInMonths` | `12`, `36`, `360` | `11`, `361`, `12.5` |
 | `riskBand` | `low`, `medium`, `high` | Empty or unsupported values |
 
@@ -72,14 +72,16 @@ Keep other fields valid; also test required fields, wrong types, and invalid bod
 ```json
 {
   "quoteId": "quote-example-standard",
-  "commissionRate": 0.02,
-  "totalCommission": 200
+  "commissionRate": "0.02",
+  "totalCommission": "200"
 }
 ```
 
+Use `shopspring/decimal` in both Go services and `decimal.js` in the frontend for loan amounts, commission rates, and commission totals. JSON carries exact decimal strings; do not convert monetary values through binary floats. Loan amount strings contain canonical whole dollars without signs, leading zeroes, decimal points, or exponents. Commission strings have at most two decimal places and no exponent notation; display two decimal places without converting to JavaScript `number`.
+
 `quoteId` is non-empty and opaque. `commissionRate` is a fraction, so `0.02` means 2%. `totalCommission` is AUD with at most two decimal places. Only the vendor calculates commission or generates quote IDs.
 
-Mock rates: low = 1%, medium = 2%, high = 3%. Calculate integer commission cents as `loanAmount * ratePercent`, then return dollars; no rounding is needed. Term is validated but does not affect this formula. Examples: 10000/medium → 200; 750000/medium → 15000; 4001/low → 40.01.
+Mock rates: low = 1%, medium = 2%, high = 3%. Calculate AUD commission using decimal multiplication: `loanAmount * commissionRate`; no rounding is needed for whole-dollar amounts and these rates. Term is validated but does not affect this formula. Examples: 10000/medium → 200; 750000/medium → 15000; 4001/low → 40.01.
 
 ## Idempotency: both endpoints
 

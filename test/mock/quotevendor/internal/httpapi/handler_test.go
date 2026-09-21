@@ -15,13 +15,13 @@ import (
 	"quotevendor/internal/config"
 )
 
-const _validBody = `{"loanAmount":10000,"loanTermInMonths":36,"riskBand":"medium"}`
+const _validBody = `{"loanAmount":"10000","loanTermInMonths":36,"riskBand":"medium"}`
 const _testKey = "test-only-placeholder"
 
 type quoteResult struct {
-	QuoteID         string  `json:"quoteId"`
-	CommissionRate  float64 `json:"commissionRate"`
-	TotalCommission float64 `json:"totalCommission"`
+	QuoteID         string `json:"quoteId"`
+	CommissionRate  string `json:"commissionRate"`
+	TotalCommission string `json:"totalCommission"`
 }
 
 func TestAuthentication(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAuthentication(t *testing.T) {
 	for _, key := range []string{"", "wrong-placeholder"} {
 		request(t, handler, "not json", "", key, 401, "UNAUTHORIZED")
 		request(t, handler, _validBody, "replay", key, 401, "UNAUTHORIZED")
-		request(t, handler, `{"loanAmount":100429,"loanTermInMonths":36,"riskBand":"medium"}`, "trigger", key, 401, "UNAUTHORIZED")
+		request(t, handler, `{"loanAmount":"100429","loanTermInMonths":36,"riskBand":"medium"}`, "trigger", key, 401, "UNAUTHORIZED")
 	}
 	// Failed authentication must not reserve a key.
 	request(t, handler, _validBody, "trigger", _testKey, 200, "")
@@ -41,17 +41,17 @@ func TestCalculation(t *testing.T) {
 	for _, tc := range []struct {
 		amount, term int
 		risk         string
-		rate, total  float64
+		rate, total  string
 	}{
-		{10000, 36, "low", 0.01, 100},
-		{10000, 36, "medium", 0.02, 200},
-		{10000, 36, "high", 0.03, 300},
-		{750000, 360, "medium", 0.02, 15000},
-		{4001, 36, "low", 0.01, 40.01},
-		{4000, 12, "low", 0.01, 40},
-		{10000000, 360, "high", 0.03, 300000},
+		{10000, 36, "low", "0.01", "100"},
+		{10000, 36, "medium", "0.02", "200"},
+		{10000, 36, "high", "0.03", "300"},
+		{750000, 360, "medium", "0.02", "15000"},
+		{4001, 36, "low", "0.01", "40.01"},
+		{4000, 12, "low", "0.01", "40"},
+		{10000000, 360, "high", "0.03", "300000"},
 	} {
-		body := fmt.Sprintf(`{"loanAmount":%d,"loanTermInMonths":%d,"riskBand":%q}`, tc.amount, tc.term, tc.risk)
+		body := fmt.Sprintf(`{"loanAmount":"%d","loanTermInMonths":%d,"riskBand":%q}`, tc.amount, tc.term, tc.risk)
 		response := request(t, handler, body, bodyKey(tc.amount, tc.term, tc.risk), _testKey, 200, "")
 		quote := decodeQuote(t, response)
 		if quote.QuoteID == "" || quote.CommissionRate != tc.rate || quote.TotalCommission != tc.total {
@@ -90,6 +90,20 @@ func TestConcurrentDuplicates(t *testing.T) {
 	}
 }
 
+func TestDecimalCalculation(t *testing.T) {
+	var quote map[string]string
+
+	handler := app.NewRouter(config.Config{APIKey: _testKey, FailureMode: "random"})
+	response := request(t, handler, `{"loanAmount":"10003","loanTermInMonths":36,"riskBand":"medium"}`, "decimal-cents", _testKey, 200, "")
+	if err := json.Unmarshal(response.Body.Bytes(), &quote); err != nil {
+		t.Fatal(err)
+	}
+
+	if quote["commissionRate"] != "0.02" || quote["totalCommission"] != "200.06" {
+		t.Fatalf("money must use exact decimal strings: %v", quote)
+	}
+}
+
 func TestFailureModes(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -110,7 +124,7 @@ func TestFailureModes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.config.APIKey = _testKey
 			handler := app.NewRouter(tc.config)
-			body := fmt.Sprintf(`{"loanAmount":%d,"loanTermInMonths":36,"riskBand":"medium"}`, tc.amount)
+			body := fmt.Sprintf(`{"loanAmount":"%d","loanTermInMonths":36,"riskBand":"medium"}`, tc.amount)
 			request(t, handler, body, "failure", _testKey, tc.status, tc.code)
 			request(t, handler, body, "failure", _testKey, tc.status, tc.code)
 			if tc.status != 200 {
@@ -134,7 +148,7 @@ func TestHealth(t *testing.T) {
 func TestIdempotency(t *testing.T) {
 	handler := app.NewRouter(config.Config{APIKey: _testKey, FailureMode: "loanAmount"})
 	first := decodeQuote(t, request(t, handler, _validBody, "same", _testKey, 200, ""))
-	for _, body := range []string{_validBody, `{"riskBand":"medium","extra":true,"loanTermInMonths":36,"loanAmount":10000}`} {
+	for _, body := range []string{_validBody, `{"riskBand":"medium","extra":true,"loanTermInMonths":36,"loanAmount":"10000"}`} {
 		if got := decodeQuote(t, request(t, handler, body, "same", _testKey, 200, "")); got != first {
 			t.Fatalf("replay = %+v, want %+v", got, first)
 		}
@@ -240,8 +254,8 @@ func TestValidation(t *testing.T) {
 			bodies = append(bodies, string(body))
 		}
 	}
-	for _, amount := range []string{"3999", "10000001", "4000.5", `"10000"`, "1e100"} {
-		bodies = append(bodies, strings.Replace(_validBody, "10000", amount, 1))
+	for _, amount := range []string{`"3999"`, `"10000001"`, `"4000.5"`, `"4000.0000000000000000001"`, "10000", `"1e100"`, `"04000"`, `"4000.00"`, `"NaN"`, `"Infinity"`} {
+		bodies = append(bodies, strings.Replace(_validBody, `"10000"`, amount, 1))
 	}
 	for _, term := range []string{"11", "361", "12.5", `"36"`} {
 		bodies = append(bodies, strings.Replace(_validBody, ":36", ":"+term, 1))

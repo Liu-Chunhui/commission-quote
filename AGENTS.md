@@ -22,6 +22,7 @@ These requirements apply to all work in this repository.
 
 ## Backend
 
+- Use decimal types for all money-related data, including loan amounts, commission rates, and commission totals: `shopspring/decimal` in Go and `decimal.js` in the frontend. Construct values from exact strings or integers, never binary floats. Both APIs transmit these fields as decimal strings; keep schemas, examples, and tests synchronized.
 - Prioritize readability and clear business logic over brevity, cleverness, or abstraction. Keep control flow straightforward and names explicit.
 - Validate untrusted data at system boundaries; do not repeat the same checks across internal layers once the data has been validated.
 - Avoid speculative defensive checks for states prevented by types, constructors, or established invariants. Add a check only for a concrete failure case relevant to the application.

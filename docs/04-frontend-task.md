@@ -27,7 +27,7 @@ Exercise the real UI and fetch lifecycle using controlled/intercepted Web API re
 
 | Check | Pass condition |
 | --- | --- |
-| Shared validation cases | Invalid forms send nothing; valid requests contain integer amount/term and the selected risk |
+| Shared validation cases | Invalid forms send nothing; valid requests contain a decimal-string amount, integer term, and the selected risk |
 | Quote display | Shared success examples format correctly without recalculation |
 | Idempotency | Match the shared UUIDv5 example; changing any field changes the key; unchanged input retains it after errors, success, or reload |
 | Delayed response and repeat click | Loading remains visible and only one request is sent |

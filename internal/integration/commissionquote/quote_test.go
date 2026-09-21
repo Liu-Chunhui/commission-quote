@@ -15,12 +15,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shopspring/decimal"
 )
 
 func TestGenerateQuote(t *testing.T) {
 	var calls atomic.Int32
 
-	input := QuoteRequest{LoanAmount: 4001, LoanTermInMonths: 36, RiskBand: "low"}
+	input := QuoteRequest{LoanAmount: decimal.NewFromInt(4001), LoanTermInMonths: 36, RiskBand: "low"}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var received QuoteRequest
 
@@ -37,11 +38,11 @@ func TestGenerateQuote(t *testing.T) {
 			t.Error(err)
 		}
 
-		if received != input {
+		if !received.LoanAmount.Equal(input.LoanAmount) || received.LoanTermInMonths != input.LoanTermInMonths || received.RiskBand != input.RiskBand {
 			t.Errorf("request = %+v, want %+v", received, input)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"quoteId":"opaque-id","commissionRate":0.01,"totalCommission":40.01}`)
+		fmt.Fprint(w, `{"quoteId":"opaque-id","commissionRate":"0.01","totalCommission":"40.01"}`)
 	}))
 	defer server.Close()
 	httpClient := server.Client()
@@ -53,7 +54,7 @@ func TestGenerateQuote(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if quote != (QuoteResponse{QuoteID: "opaque-id", CommissionRate: 0.01, TotalCommission: 40.01}) {
+		if quote.QuoteID != "opaque-id" || !quote.CommissionRate.Equal(decimal.RequireFromString("0.01")) || !quote.TotalCommission.Equal(decimal.RequireFromString("40.01")) {
 			t.Errorf("unexpected quote: %+v", quote)
 		}
 	}
@@ -66,7 +67,7 @@ func TestGenerateQuote(t *testing.T) {
 func TestGenerateQuoteAuthentication(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("api-key") == "test-only-key" {
-			fmt.Fprint(w, `{"quoteId":"id","commissionRate":0.02,"totalCommission":200}`)
+			fmt.Fprint(w, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"200"}`)
 			return
 		}
 		w.WriteHeader(http.StatusUnauthorized)
@@ -75,7 +76,7 @@ func TestGenerateQuoteAuthentication(t *testing.T) {
 	defer server.Close()
 	for _, key := range []string{"", "wrong-test-key"} {
 		client := NewQuoteClient(newTestHTTPClient(), server.URL, key)
-		if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
+		if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"}); err == nil {
 			t.Fatal("authentication rejection must propagate as a failure")
 		}
 	}
@@ -95,11 +96,11 @@ func TestGenerateQuoteDoesNotRetryConnectionFailure(t *testing.T) {
 			connection.Close()
 			return
 		}
-		fmt.Fprint(w, `{"quoteId":"id","commissionRate":0.02,"totalCommission":200}`)
+		fmt.Fprint(w, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"200"}`)
 	}))
 	defer server.Close()
 	client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
-	input := QuoteRequest{10000, 36, "medium"}
+	input := QuoteRequest{decimal.NewFromInt(10000), 36, "medium"}
 	if _, err := client.GenerateQuote(context.Background(), "test-key", input); err != nil {
 		t.Fatal(err)
 	}
@@ -131,14 +132,19 @@ func TestGenerateQuoteFailures(t *testing.T) {
 		{"malformed error", 500, `<html>test detail</html>`},
 		{"missing error message", 500, `{"error":{"code":"INTERNAL_ERROR"}}`},
 		{"malformed success", 200, `{`},
-		{"trailing success", 200, `{"quoteId":"id","commissionRate":0.02,"totalCommission":200} {}`},
-		{"missing ID", 200, `{"commissionRate":0.02,"totalCommission":200}`},
-		{"missing rate", 200, `{"quoteId":"id","totalCommission":200}`},
-		{"wrong rate", 200, `{"quoteId":"id","commissionRate":2,"totalCommission":200}`},
-		{"missing commission", 200, `{"quoteId":"id","commissionRate":0.02}`},
-		{"null commission", 200, `{"quoteId":"id","commissionRate":0.02,"totalCommission":null}`},
-		{"string commission", 200, `{"quoteId":"id","commissionRate":0.02,"totalCommission":"200"}`},
-		{"fractional cents", 200, `{"quoteId":"id","commissionRate":0.02,"totalCommission":200.001}`},
+		{"trailing success", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"200"} {}`},
+		{"missing ID", 200, `{"commissionRate":"0.02","totalCommission":"200"}`},
+		{"missing rate", 200, `{"quoteId":"id","totalCommission":"200"}`},
+		{"wrong rate", 200, `{"quoteId":"id","commissionRate":"2","totalCommission":"200"}`},
+		{"missing commission", 200, `{"quoteId":"id","commissionRate":"0.02"}`},
+		{"null commission", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":null}`},
+		{"numeric commission", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":200}`},
+		{"fractional cents", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"200.001"}`},
+		{"sub-float fractional cents", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"40.0100000000000000001"}`},
+		{"numeric rate", 200, `{"quoteId":"id","commissionRate":0.02,"totalCommission":"200"}`},
+		{"NaN commission", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"NaN"}`},
+		{"infinite commission", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"Infinity"}`},
+		{"exponent commission", 200, `{"quoteId":"id","commissionRate":"0.02","totalCommission":"2e2"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -151,12 +157,12 @@ func TestGenerateQuoteFailures(t *testing.T) {
 			}))
 			defer server.Close()
 			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
-			quote, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"})
+			quote, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"})
 			if err == nil || err.Error() != "unable to generate a quote" {
 				t.Fatal("expected the generic quote failure")
 			}
 
-			if quote != (QuoteResponse{}) || calls.Load() != 1 {
+			if quote.QuoteID != "" || !quote.CommissionRate.IsZero() || !quote.TotalCommission.IsZero() || calls.Load() != 1 {
 				t.Errorf("failed request must return no quote and make exactly one attempt; quote=%+v calls=%d", quote, calls.Load())
 			}
 		})
@@ -175,7 +181,7 @@ func TestGenerateQuoteLogs(t *testing.T) {
 		body   string
 		code   string
 	}{
-		{"success", 200, `{"quoteId":"opaque-id","commissionRate":0.02,"totalCommission":200}`, ""},
+		{"success", 200, `{"quoteId":"opaque-id","commissionRate":"0.02","totalCommission":"200"}`, ""},
 		{"failure", 401, `{"error":{"code":"UNAUTHORIZED","message":"test-private-detail"}}`, "UNAUTHORIZED"},
 		{"unknown code", 500, `{"error":{"code":"test-private-detail","message":"test-private-detail"}}`, ""},
 	}
@@ -189,7 +195,7 @@ func TestGenerateQuoteLogs(t *testing.T) {
 			defer server.Close()
 			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			ctx := context.WithValue(context.Background(), middleware.RequestIDKey, "request-42")
-			_, err := client.GenerateQuote(ctx, "test-key", QuoteRequest{10000, 36, "medium"})
+			_, err := client.GenerateQuote(ctx, "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"})
 			if (err != nil) != (tc.status != 200) {
 				t.Fatal("unexpected call outcome")
 			}
@@ -247,7 +253,7 @@ func TestGenerateQuoteNetworkFailures(t *testing.T) {
 	server.Close()
 	for _, endpoint := range []string{server.URL, "://invalid"} {
 		client := NewQuoteClient(newTestHTTPClient(), endpoint, "test-only-key")
-		_, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"})
+		_, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"})
 		if err == nil || err.Error() != "unable to generate a quote" {
 			t.Fatal("network and request construction failures must return a safe error")
 		}
@@ -260,10 +266,10 @@ func TestGenerateQuotePassThrough(t *testing.T) {
 		response string
 		want     QuoteResponse
 	}{
-		{QuoteRequest{750000, 360, "medium"}, `{"quoteId":"large","commissionRate":0.02,"totalCommission":15000}`, QuoteResponse{"large", 0.02, 15000}},
-		{QuoteRequest{4000, 12, "high"}, `{"quoteId":"high","commissionRate":0.03,"totalCommission":120}`, QuoteResponse{"high", 0.03, 120}},
-		{QuoteRequest{100400, 36, "medium"}, `{"quoteId":"trigger-one","commissionRate":0.02,"totalCommission":123.45}`, QuoteResponse{"trigger-one", 0.02, 123.45}},
-		{QuoteRequest{100429, 36, "medium"}, `{"quoteId":"trigger-two","commissionRate":0.02,"totalCommission":0}`, QuoteResponse{"trigger-two", 0.02, 0}},
+		{QuoteRequest{decimal.NewFromInt(750000), 360, "medium"}, `{"quoteId":"large","commissionRate":"0.02","totalCommission":"15000"}`, QuoteResponse{"large", decimal.RequireFromString("0.02"), decimal.RequireFromString("15000")}},
+		{QuoteRequest{decimal.NewFromInt(4000), 12, "high"}, `{"quoteId":"high","commissionRate":"0.03","totalCommission":"120"}`, QuoteResponse{"high", decimal.RequireFromString("0.03"), decimal.RequireFromString("120")}},
+		{QuoteRequest{decimal.NewFromInt(100400), 36, "medium"}, `{"quoteId":"trigger-one","commissionRate":"0.02","totalCommission":"123.45"}`, QuoteResponse{"trigger-one", decimal.RequireFromString("0.02"), decimal.RequireFromString("123.45")}},
+		{QuoteRequest{decimal.NewFromInt(100429), 36, "medium"}, `{"quoteId":"trigger-two","commissionRate":"0.02","totalCommission":"0"}`, QuoteResponse{"trigger-two", decimal.RequireFromString("0.02"), decimal.RequireFromString("0")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want.QuoteID, func(t *testing.T) {
@@ -274,7 +280,7 @@ func TestGenerateQuotePassThrough(t *testing.T) {
 					t.Error(err)
 				}
 
-				if received != tc.input {
+				if !received.LoanAmount.Equal(tc.input.LoanAmount) || received.LoanTermInMonths != tc.input.LoanTermInMonths || received.RiskBand != tc.input.RiskBand {
 					t.Error("client must forward input unchanged, including mock trigger amounts")
 				}
 				fmt.Fprint(w, tc.response)
@@ -282,7 +288,7 @@ func TestGenerateQuotePassThrough(t *testing.T) {
 			defer server.Close()
 			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
 			quote, err := client.GenerateQuote(context.Background(), "test-key", tc.input)
-			if err != nil || quote != tc.want {
+			if err != nil || quote.QuoteID != tc.want.QuoteID || !quote.CommissionRate.Equal(tc.want.CommissionRate) || !quote.TotalCommission.Equal(tc.want.TotalCommission) {
 				t.Fatalf("response must be returned without recalculation: quote=%+v err=%v", quote, err)
 			}
 		})
@@ -296,7 +302,7 @@ func TestGenerateQuoteReadFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
-	if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
+	if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"}); err == nil {
 		t.Fatal("truncated response must fail")
 	}
 }
@@ -315,7 +321,7 @@ func TestGenerateQuoteRedirect(t *testing.T) {
 			}))
 			defer server.Close()
 			client := NewQuoteClient(newTestHTTPClient(), server.URL, "test-only-key")
-			if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{10000, 36, "medium"}); err == nil {
+			if _, err := client.GenerateQuote(context.Background(), "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"}); err == nil {
 				t.Fatal("unexpected redirect must fail")
 			}
 
@@ -356,7 +362,7 @@ func TestGenerateQuoteTimeoutAndCancellation(t *testing.T) {
 				}()
 			}
 
-			_, err := client.GenerateQuote(ctx, "test-key", QuoteRequest{10000, 36, "medium"})
+			_, err := client.GenerateQuote(ctx, "test-key", QuoteRequest{decimal.NewFromInt(10000), 36, "medium"})
 			if err == nil || err.Error() != "unable to generate a quote" {
 				t.Fatal("timeout or cancellation must return a safe error")
 			}

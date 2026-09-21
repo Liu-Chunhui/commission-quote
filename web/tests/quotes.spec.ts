@@ -38,7 +38,7 @@ test('submits typed input and the contract key, then displays the returned quote
   await expect(page.getByText('AUD 200.00', { exact: true })).toBeVisible();
   expect(requests).toHaveLength(1);
   expect(requests[0].url).toBe('http://localhost:5173/api/quotes');
-  expect(requests[0].body).toEqual({ loanAmount: 10000, loanTermInMonths: 36, riskBand: 'medium' });
+  expect(requests[0].body).toEqual({ loanAmount: '10000', loanTermInMonths: 36, riskBand: 'medium' });
   expect(requests[0].headers['idempotency-key']).toBe(expectedKey);
   expect(requests[0].headers['content-type']).toBe('application/json');
   expect(requests[0].headers).not.toHaveProperty('api-key');
@@ -58,6 +58,7 @@ test('blocks missing, fractional and out-of-range fields without sending a reque
     ['3999', '36', 'medium', 'Loan amount'],
     ['10000001', '36', 'medium', 'Loan amount'],
     ['4000.5', '36', 'medium', 'Loan amount'],
+    ['4000.0000000000000000001', '36', 'medium', 'Loan amount'],
     ['10000', '', 'medium', 'Loan term'],
     ['10000', '11', 'medium', 'Loan term'],
     ['10000', '361', 'medium', 'Loan term'],
@@ -95,7 +96,7 @@ test('accepts inclusive boundaries and every risk band', async ({ page }) => {
     await fillForm(page, amount, term, risk);
     await page.getByRole('button', { name: 'Generate Quote', exact: true }).click();
     await expect(page.getByText(standard.quoteId, { exact: true })).toBeVisible();
-    expect(bodies.at(-1)).toEqual({ loanAmount: Number(amount), loanTermInMonths: Number(term), riskBand: risk });
+    expect(bodies.at(-1)).toEqual({ loanAmount: amount, loanTermInMonths: Number(term), riskBand: risk });
   }
   expect(bodies).toHaveLength(3);
 });
@@ -103,7 +104,7 @@ test('accepts inclusive boundaries and every risk band', async ({ page }) => {
 for (const [name, quote, amount, risk, rate, total] of [
   ['larger amount', examples.largerAmount.value, '750000', 'medium', '2%', 'AUD 15,000.00'],
   ['commission cents', examples.commissionCents.value, '4001', 'low', '1%', 'AUD 40.01'],
-  ['server-calculated total', { quoteId: 'opaque-id', commissionRate: 0.03, totalCommission: 123.45 }, '10000', 'high', '3%', 'AUD 123.45'],
+  ['server-calculated total', { quoteId: 'opaque-id', commissionRate: '0.03', totalCommission: '123.45' }, '10000', 'high', '3%', 'AUD 123.45'],
 ] as const) {
   test(`formats ${name} without calculating commission`, async ({ page }) => {
     await page.route(endpoint, route => route.fulfill({ json: quote }));
@@ -201,7 +202,7 @@ for (const scenario of ['validation', 'server', 'network', 'invalid JSON', 'inva
       if (scenario === 'server') return route.fulfill({ status: 500, json: failure });
       if (scenario === 'network') return route.abort('failed');
       if (scenario === 'invalid JSON') return route.fulfill({ contentType: 'application/json', body: 'not JSON' });
-      return route.fulfill({ json: { ...standard, totalCommission: '200' } });
+      return route.fulfill({ json: { ...standard, totalCommission: 200 } });
     });
     await page.goto('/');
     await fillForm(page);
@@ -232,7 +233,7 @@ for (const amount of ['100400', '100429']) {
     await fillForm(page, amount);
     await page.getByRole('button', { name: 'Generate Quote', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveText(failure.error.message);
-    expect(submitted).toEqual({ loanAmount: Number(amount), loanTermInMonths: 36, riskBand: 'medium' });
+    expect(submitted).toEqual({ loanAmount: amount, loanTermInMonths: 36, riskBand: 'medium' });
   });
 }
 
@@ -257,4 +258,38 @@ test('supports keyboard submission and a narrow viewport', async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('Quote generated');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByText('AUD 200.00', { exact: true })).toBeVisible();
+});
+
+test('preserves decimal cents beyond the JavaScript safe integer range', async ({ page }) => {
+  await page.route('**/api/quotes', route => route.fulfill({ json: {
+    quoteId: 'exact-decimal', commissionRate: '0.02', totalCommission: '9007199254740993.01',
+  } }));
+  await page.goto('/');
+  await page.getByLabel('Loan amount (AUD)').fill('10003');
+  await page.getByLabel('Loan term (months)').fill('36');
+  await page.getByLabel('Risk band').selectOption('medium');
+  const request = page.waitForRequest('**/api/quotes');
+  await page.getByRole('button', { name: 'Generate Quote', exact: true }).click();
+  expect((await request).postDataJSON().loanAmount).toBe('10003');
+  await expect(page.locator('.quote')).toContainText('AUD 9,007,199,254,740,993.01');
+});
+
+test('rejects non-decimal money and fractional cents in responses', async ({ page }) => {
+  for (const invalid of [
+    { commissionRate: 0.02 },
+    { commissionRate: 'NaN' },
+    { totalCommission: 200 },
+    { totalCommission: null },
+    { totalCommission: 'Infinity' },
+    { totalCommission: '2e2' },
+    { totalCommission: '40.0100000000000000001' },
+  ]) {
+    await page.route(endpoint, route => route.fulfill({ json: { ...standard, ...invalid } }));
+    await page.goto('/');
+    await fillForm(page);
+    await page.getByRole('button', { name: 'Generate Quote', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(failure.error.message);
+    await expect(page.locator('.quote')).toHaveCount(0);
+    await page.unroute(endpoint);
+  }
 });

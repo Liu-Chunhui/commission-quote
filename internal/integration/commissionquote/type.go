@@ -1,13 +1,15 @@
 package commissionquote
 
+import "github.com/shopspring/decimal"
+
 type QuoteRequest struct {
-	LoanAmount       int    `json:"loanAmount"`
-	LoanTermInMonths int    `json:"loanTermInMonths"`
-	RiskBand         string `json:"riskBand"`
+	LoanAmount       decimal.Decimal `json:"loanAmount"`
+	LoanTermInMonths int             `json:"loanTermInMonths"`
+	RiskBand         string          `json:"riskBand"`
 }
 
 type QuoteResponse struct {
-	QuoteID         string  `json:"quoteId"`
-	CommissionRate  float64 `json:"commissionRate"`
-	TotalCommission float64 `json:"totalCommission"`
+	QuoteID         string          `json:"quoteId"`
+	CommissionRate  decimal.Decimal `json:"commissionRate"`
+	TotalCommission decimal.Decimal `json:"totalCommission"`
 }

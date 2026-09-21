@@ -22,34 +22,23 @@ The script installs missing tools using Homebrew and skips those already install
 
 ## Run the web application
 
-Start Docker Desktop and provide the shared test key in `test/mock/data/API_KEY`. From the repository root:
+![Demo](docs/img/demo.gif)
+
+With Docker running, run from the repository root:
 
 ```sh
 make ci up
 ```
 
-Open **http://localhost:8088**. Compose builds and starts quotevendor, the backend, and the web frontend, waiting for their health checks. Compose mounts each Go service's `ci.json` profile read-only and selects it with `--config`; configuration is not baked into images. The existing API key is mounted only into those services; it is not included in images.
+Open **http://localhost:8088**.
 
-To select configuration files for each service:
-
-```sh
-SERVER_CONFIG=/absolute/path/server.json \
-QUOTEVENDOR_CONFIG=/absolute/path/quotevendor.json make ci up
-```
-
-These variables select Compose file mounts; the services still read JSON settings. Use the CI profiles as templates, keeping the container host, ports, downstream URL, and key paths compatible with Compose networking and mounts.
-
-Stop and clean the CI stack:
+To stop and clean up:
 
 ```sh
 make ci down
 ```
 
-This removes the stack's containers, network, volumes, and locally built images. The private key and shared Docker build cache are preserved. No database, migrations, or persistent data volumes are needed; mock quotes live in memory until restart.
-
-For local development with Go and Node.js, use `make dev up` and open **http://localhost:5173**. It selects the dev profiles; Ctrl+C stops the three processes.
-
-See the [challenge README](test/mock/quotevendor/README.md) for example inputs, tests, configuration, assumptions, and AI usage.
+See the [challenge README](test/mock/quotevendor/README.md) for local development, configuration, and tests.
 
 ## Simulation
 

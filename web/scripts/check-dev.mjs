@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 
-// Run after make dev up. All requests use the real application and mock service.
+// Use loanAmount failure mode. APP_URL also allows checking the container stack.
+const appURL = process.env.APP_URL ?? 'http://localhost:5173';
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
@@ -13,7 +14,7 @@ try {
   page.on('request', request => {
     if (new URL(request.url()).pathname === '/api/quotes') quoteRequests.push(request);
   });
-  await page.goto('http://localhost:5173');
+  await page.goto(appURL);
   assert.equal(await page.locator('h1').innerText(), 'Commission quote');
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
 
@@ -28,16 +29,20 @@ try {
     return { status: response.status(), body: await response.json() };
   }
 
-  const first = await submit(10000);
+  const first = await submit('10000');
   assert.equal(first.status, 200);
-  assert.equal(first.body.commissionRate, 0.02);
-  assert.equal(first.body.totalCommission, 200);
+  assert.equal(first.body.commissionRate, '0.02');
+  assert.equal(first.body.totalCommission, '200');
   assert.ok(first.body.quoteId);
-  assert.deepEqual(await submit(10000), first);
+  assert.deepEqual(await submit('10000'), first);
   await page.reload();
-  assert.deepEqual(await submit(10000), first);
+  assert.deepEqual(await submit('10000'), first);
 
-  for (const amount of [100400, 100429]) {
+  const cents = await submit('10003');
+  assert.equal(cents.status, 200);
+  assert.equal(cents.body.totalCommission, '200.06');
+
+  for (const amount of ['100400', '100429']) {
     const failure = await submit(amount);
     assert.equal(failure.status, 500);
     assert.deepEqual(failure.body, { error: { code: 'INTERNAL_ERROR', message: 'Unable to generate a quote. Please try again later.' } });
@@ -45,13 +50,14 @@ try {
     assert.equal(await page.locator('.quote').count(), 0);
   }
 
-  assert.deepEqual(await submit(10000), first);
+  assert.deepEqual(await submit('10000'), first);
   assert.match(await page.locator('.quote').innerText(), /AUD\s+200\.00/);
   assert.match(await page.locator('.quote').innerText(), /2%/);
   assert.equal(await page.getByRole('alert').innerText(), '');
   for (const request of quoteRequests) {
     const headers = await request.allHeaders();
-    assert.equal(new URL(request.url()).origin, 'http://localhost:5173');
+    assert.equal(new URL(request.url()).origin, new URL(appURL).origin);
+    assert.equal(typeof request.postDataJSON().loanAmount, 'string');
     assert.equal(headers['api-key'], undefined);
     assert.ok(headers['idempotency-key']);
   }
