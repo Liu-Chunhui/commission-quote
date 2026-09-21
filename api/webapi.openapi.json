@@ -1,0 +1,284 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Commission Quote Web API",
+        "version": "1.0.0",
+        "description": "Browser-facing application API implemented in internal/app/, with startup wiring in cmd/app/main.go. The browser calls this API; the application calls the independent mock vendor over HTTP. All amounts are AUD. QuoteRequest and QuoteResponse match the vendor contract; ErrorResponse defines application errors. No staff authentication or browser API key is required. Vendor credentials remain server-side. This specification defines required behavior, not implementation status."
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8080",
+            "description": "Local application backend; the frontend dev server proxies /api here"
+        }
+    ],
+    "security": [],
+    "paths": {
+        "/health": {
+            "get": {
+                "operationId": "health",
+                "summary": "Check service liveness",
+                "description": "Local liveness only. Requires no request body, API key, or idempotency key. Does not call downstream services or apply quote validation, idempotency, or simulated failures.",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "The service is running.",
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "ok"
+                                    ]
+                                },
+                                "example": "ok"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/quotes": {
+            "description": "Generate a commission quote.",
+            "post": {
+                "operationId": "generateQuote",
+                "summary": "Request a commission quote",
+                "description": "Validate the required idempotency-key and request body, then call vendor POST /quotes with the unchanged key and the private server-side api-key. Use a three-second outbound timeout and propagate incoming request cancellation. No automatic retries. Return valid quote fields unchanged or return the single generic failure response. Interpret quote-service statuses and error codes internally; never forward them to the browser. Treat every valid loan amount normally, including the mock trigger amounts; do not implement mock behavior here.",
+                "parameters": [
+                    {
+                        "name": "idempotency-key",
+                        "in": "header",
+                        "required": true,
+                        "description": "Required caller-generated opaque key. The frontend derives UUIDv5 from validated loanAmount|loanTermInMonths|riskBand using x-idempotency.generation. Missing or invalid values return 400 before contacting the vendor. The application forwards the key unchanged and does not recompute it. This example matches the standardQuote request; derive the key again when input changes.",
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "pattern": "^[!-~]{1,255}$"
+                        },
+                        "example": "32fafb2a-70b4-5114-9f2d-52be7286eaf5"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "description": "Require one valid JSON object with integer loan amount and term, and an allowed risk band. Missing/null fields, wrong types including numeric strings, fractional amounts/terms, invalid ranges, and trailing JSON values return 400. Ignore extra fields. Do not round, clamp, or supply defaults to make invalid input valid.",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/QuoteRequest"
+                            },
+                            "examples": {
+                                "standardQuote": {
+                                    "summary": "Standard valid request",
+                                    "value": {
+                                        "loanAmount": 10000,
+                                        "loanTermInMonths": 36,
+                                        "riskBand": "medium"
+                                    }
+                                },
+                                "largerAmount": {
+                                    "summary": "Larger valid amount with the same validation rules",
+                                    "value": {
+                                        "loanAmount": 750000,
+                                        "loanTermInMonths": 360,
+                                        "riskBand": "medium"
+                                    }
+                                },
+                                "commissionCents": {
+                                    "summary": "Integer loan amount producing commission cents",
+                                    "value": {
+                                        "loanAmount": 4001,
+                                        "loanTermInMonths": 36,
+                                        "riskBand": "low"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Return the vendor quote fields unchanged. The application does not calculate commission or generate quote IDs. Same-key, same-input successful retries replay the vendor quote while the vendor retains it.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/QuoteResponse"
+                                },
+                                "examples": {
+                                    "standardQuote": {
+                                        "value": {
+                                            "quoteId": "quote-example-standard",
+                                            "commissionRate": 0.02,
+                                            "totalCommission": 200
+                                        }
+                                    },
+                                    "largerAmount": {
+                                        "value": {
+                                            "quoteId": "quote-example-larger",
+                                            "commissionRate": 0.02,
+                                            "totalCommission": 15000
+                                        }
+                                    },
+                                    "commissionCents": {
+                                        "value": {
+                                            "quoteId": "quote-example-cents",
+                                            "commissionRate": 0.01,
+                                            "totalCommission": 40.01
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "INVALID_REQUEST: Invalid input or missing/invalid idempotency-key. Validation messages identify the field or body problem.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "INVALID_REQUEST",
+                                        "message": "loanAmount must be an integer between AUD 4000 and AUD 10000000."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR: Quote generation failed. All quote-service failures, connection/decoding errors, timeouts, and unexpected local failures return this same status and payload.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                },
+                                "example": {
+                                    "error": {
+                                        "code": "INTERNAL_ERROR",
+                                        "message": "Unable to generate a quote. Please try again later."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "QuoteRequest": {
+                "type": "object",
+                "required": [
+                    "loanAmount",
+                    "loanTermInMonths",
+                    "riskBand"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                    "loanAmount": {
+                        "type": "integer",
+                        "minimum": 4000,
+                        "maximum": 10000000,
+                        "description": "Whole AUD dollars, 4000 through 10000000 inclusive. Fractional amounts are not accepted."
+                    },
+                    "loanTermInMonths": {
+                        "type": "integer",
+                        "minimum": 12,
+                        "maximum": 360,
+                        "description": "Integer months, 12 through 360 inclusive."
+                    },
+                    "riskBand": {
+                        "type": "string",
+                        "enum": [
+                            "low",
+                            "medium",
+                            "high"
+                        ],
+                        "description": "Case-sensitive, already-assessed risk band. Empty, padded, or differently cased labels are invalid. The mock does not calculate creditworthiness."
+                    }
+                },
+                "description": "Shared generic input rules for all three tasks. Required fields reject null, booleans, arrays, and objects. Extra fields are ignored. No cross-field product eligibility or risk inference."
+            },
+            "QuoteResponse": {
+                "type": "object",
+                "required": [
+                    "quoteId",
+                    "commissionRate",
+                    "totalCommission"
+                ],
+                "properties": {
+                    "quoteId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Opaque identifier generated on the first success for a key and unchanged on replay; no UUID or other format is promised."
+                    },
+                    "commissionRate": {
+                        "type": "number",
+                        "enum": [
+                            0.01,
+                            0.02,
+                            0.03
+                        ],
+                        "description": "Decimal fraction; 0.02 means 2%."
+                    },
+                    "totalCommission": {
+                        "type": "number",
+                        "multipleOf": 0.01,
+                        "description": "AUD commission with at most two decimal places. JSON need not preserve trailing zeroes."
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "required": [
+                    "error"
+                ],
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "required": [
+                            "code",
+                            "message"
+                        ],
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "enum": [
+                                    "INVALID_REQUEST",
+                                    "INTERNAL_ERROR"
+                                ]
+                            },
+                            "message": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Safe user-facing explanation. Never include vendor/provider names, codes, raw error text, URLs, credentials, stack traces, or internal connection details."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "x-idempotency": {
+        "header": "idempotency-key",
+        "generation": {
+            "algorithm": "UUIDv5 (RFC 9562 section 5.5)",
+            "namespace": "eae5612f-0c86-500d-ab8a-3f9eb483991f",
+            "namespaceDerivation": "UUIDv5(DNS namespace, \"commissionquote\")",
+            "name": "{loanAmount}|{loanTermInMonths}|{riskBand}",
+            "encoding": "UTF-8; validated integers in ordinary decimal form, exact lowercase risk band, no spaces. No timestamp or random component.",
+            "output": "Lowercase hyphenated UUID",
+            "example": {
+                "loanAmount": 10000,
+                "loanTermInMonths": 36,
+                "riskBand": "medium",
+                "name": "10000|36|medium",
+                "idempotencyKey": "32fafb2a-70b4-5114-9f2d-52be7286eaf5"
+            }
+        },
+        "caller": "Identical validated input produces the same UUIDv5 key on retries, after success, across page reloads, and across browser sessions. Changing amount, term, or risk changes the key. No client key storage or automatic retries.",
+        "application": "Validate the key format and forward it unchanged. Do not recompute keys, bind them to requests, or cache quotes in the application.",
+        "vendorBehavior": "The vendor binds a key to validated input and retains the first successful quote in process memory. Same input replays the successful quote; changed input under the bound key returns an internal 409 to the application, which exposes only the generic 500 response to the browser. Failed responses are not stored, so the same input can be retried. Vendor restart clears its state."
+    }
+}
