@@ -3,7 +3,7 @@
     "info": {
         "title": "Commission Quote Web API",
         "version": "1.0.0",
-        "description": "Browser-facing application API with handlers in internal/httpapi/, routing and request logging in internal/app/, configuration in internal/config/, and startup wiring in cmd/app/main.go. The browser calls this API; the application calls the independent mock vendor over HTTP. All amounts are AUD. QuoteRequest and QuoteResponse match the vendor contract; ErrorResponse defines application errors. No staff authentication or browser API key is required. Vendor credentials remain server-side. This specification defines required behavior, not implementation status."
+        "description": "Browser-facing application API implemented in internal/app/, with startup wiring in cmd/app/main.go. The browser calls this API; the application calls the independent mock vendor over HTTP. All amounts are AUD. QuoteRequest and QuoteResponse match the vendor contract; ErrorResponse defines application errors. No staff authentication or browser API key is required. Vendor credentials remain server-side. This specification defines required behavior, not implementation status."
     },
     "servers": [
         {
