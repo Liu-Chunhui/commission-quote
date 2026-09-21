@@ -1,24 +1,36 @@
 .DEFAULT_GOAL := help
-.PHONY: help web server dev build test clean
+.PHONY: help web server quote dev build test clean
 
 help:
 	@printf '%s\n' 'make web dev    Start the frontend only' \
-		'make web build  Build the frontend' \
-		'make web test   Run frontend browser tests' \
+		'make web build     Build the frontend' \
+		'make web test      Run frontend browser tests' \
 		'make server dev    Start the backend with confg/dev.json' \
 		'make server build  Build the backend to bin/app' \
 		'make server test   Run backend tests with coverage in gen/coverage.out' \
-		'make clean      Stop Vite and remove dependencies and generated files'
+		'make quote dev     Start the mock quote service with config/dev.json' \
+		'make quote build   Build the mock quote service to test/mock/commissionquote/bin/quote' \
+		'make clean         Stop Vite and remove dependencies and generated files'
 
 # Make treats the component and the following action as separate targets.
-web server:
+web server quote:
 	@:
 
-ifneq ($(filter server,$(MAKECMDGOALS)),)
-ifneq ($(filter web,$(MAKECMDGOALS)),)
-$(error Choose either web or server for each make invocation)
+ifneq ($(word 2,$(sort $(filter web server quote,$(MAKECMDGOALS)))),)
+$(error Choose only one component: web, server, or quote)
 endif
 
+ifneq ($(filter quote,$(MAKECMDGOALS)),)
+dev:
+	cd test/mock/commissionquote && go run ./cmd --config config/dev.json
+
+build:
+	mkdir -p test/mock/commissionquote/bin
+	cd test/mock/commissionquote && go build -o bin/quote ./cmd
+
+test:
+	$(error make quote supports dev and build only)
+else ifneq ($(filter server,$(MAKECMDGOALS)),)
 dev:
 	go run ./cmd/app --config confg/dev.json
 
@@ -47,4 +59,5 @@ clean:
 		esac; \
 	done
 	rm -rf bin gen web/node_modules web/dist web/test-results web/playwright-report
+	rm -rf test/mock/commissionquote/bin test/mock/commissionquote/gen
 	rm -f app coverage.out coverage.html

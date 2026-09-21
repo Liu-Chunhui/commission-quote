@@ -4,6 +4,8 @@
 # Binaries for programs and plugins
 /bin/
 /gen/
+/test/mock/commissionquote/bin/
+/test/mock/commissionquote/gen/
 *.exe
 *.exe~
 *.dll
