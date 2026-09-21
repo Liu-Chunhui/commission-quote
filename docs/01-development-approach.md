@@ -119,12 +119,14 @@ The frontend uses one generic failure flow, without vendor-specific status/code 
 
 | Setting | Owner | Default or requirement |
 | --- | --- | --- |
-| `APP_ADDR` | B | `localhost:8080` |
+| Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080; binds to `localhost` |
 | `VENDOR_BASE_URL` | B | `http://localhost:8090`; append `/quotes` |
 | `VENDOR_ADDR` | A | `localhost:8090` |
 | `VENDOR_API_KEY` | A and B | Required environment variable; same private value in both processes |
 
-The frontend runs on port 5173 and proxies `/api` to the application. Configuration profiles belong only to A:
+The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports stop startup. The file is the only source of the application port; `APP_ADDR` is no longer used.
+
+The frontend runs on port 5173 and proxies `/api` to the application. Mock failure profiles belong only to A:
 
 | Profile | Failure behavior |
 | --- | --- |
