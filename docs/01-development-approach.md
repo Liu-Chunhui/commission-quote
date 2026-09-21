@@ -147,6 +147,8 @@ All tasks must build, satisfy their API contract, and provide reproducible comma
 
 ## Final integration
 
+Development integration has been verified for successful quotes, replay after reload, both dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/commissionquote/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
+
 After independent acceptance and merging:
 
 1. Start all components with the shared configuration. Use dev mode and an ordinary amount for success; verify browser key secrecy and invalid-input handling.

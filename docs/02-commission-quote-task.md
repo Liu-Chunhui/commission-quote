@@ -45,6 +45,8 @@ Use `-config config/ci.json` to select the CI profile.
 
 From the repository root, `make quote dev` starts the service with the dev profile and `make quote build` writes `test/mock/commissionquote/bin/quote`. Run the built executable from the mock module directory so the default profile resolves correctly. `make clean` also removes this service's `bin/` and `gen/` directories. There is no `make quote test`; run the Go tests from the mock module as shown above.
 
+`make dev up` starts all three components using the existing shared key referenced by the dev profiles. See the [combined startup instructions](../test/mock/commissionquote/README.md#start-the-complete-app).
+
 ## Task A handoff — 2026-09-21
 
 The independent service is implemented. Startup and manual HTTP steps are in [README](../test/mock/commissionquote/README.md#run); its standalone specification is `test/mock/commissionquote/api/commissionquote.openapi.json`.

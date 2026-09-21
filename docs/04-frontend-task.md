@@ -74,6 +74,8 @@ The web commands install locked dependencies automatically when missing or when 
 
 Open `http://localhost:5173`. Vite proxies `/api` to `http://localhost:8080`; normal manual quote generation needs the application backend there. The frontend needs no environment variables or credentials. Web Crypto requires localhost or HTTPS.
 
+For the complete real-service flow, run `make dev up` from the repository root. This launches the quote mock, application, and frontend; both Go services use their dev JSON profiles. `npm --prefix web run test:integration` checks the live stack; see the [combined README](../test/mock/commissionquote/README.md#verify-the-complete-app) for the successful 10000/36/medium example and verified results.
+
 ### Independent acceptance
 
 From `web/`:

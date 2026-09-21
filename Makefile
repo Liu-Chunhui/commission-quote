@@ -1,8 +1,9 @@
 .DEFAULT_GOAL := help
-.PHONY: help web server quote dev build test clean
+.PHONY: help web server quote dev up build test clean
 
 help:
-	@printf '%s\n' 'make web dev    Start the frontend only' \
+	@printf '%s\n' 'make dev up        Start quote, web service, and frontend; Ctrl+C stops all' \
+		'make web dev       Start the frontend only' \
 		'make web build     Build the frontend' \
 		'make web test      Run frontend browser tests' \
 		'make server dev    Start the backend with confg/dev.json' \
@@ -20,7 +21,24 @@ ifneq ($(word 2,$(sort $(filter web server quote,$(MAKECMDGOALS)))),)
 $(error Choose only one component: web, server, or quote)
 endif
 
-ifneq ($(filter quote,$(MAKECMDGOALS)),)
+ifneq ($(filter up,$(MAKECMDGOALS)),)
+ifneq ($(sort $(MAKECMDGOALS)),dev up)
+$(error Use make dev up to start all components)
+endif
+dev:
+	@:
+
+up: SHELL := /bin/bash
+up:
+	@set -m; \
+	pids=""; \
+	trap 'for pid in $$pids; do kill -TERM -- -$$pid 2>/dev/null || true; done; wait' EXIT; \
+	trap 'exit 0' INT TERM; \
+	make quote dev & pids="$$pids $$!"; \
+	make server dev & pids="$$pids $$!"; \
+	make web dev & pids="$$pids $$!"; \
+	wait
+else ifneq ($(filter quote,$(MAKECMDGOALS)),)
 dev:
 	cd test/mock/commissionquote && go run ./cmd --config config/dev.json
 

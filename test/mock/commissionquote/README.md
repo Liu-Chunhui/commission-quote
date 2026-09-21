@@ -1,8 +1,53 @@
-# Commission Quote App: Mock Service
+# Commission Quote App
 
-Task A is implemented independently. Application backend, browser UI, and end-to-end integration are separate tasks. See the [shared contract](../../../docs/01-development-approach.md), [Task A acceptance](../../../docs/02-commission-quote-task.md), and [standalone vendor API](api/commissionquote.openapi.json).
+The React frontend, Go application backend, and independent Go mock quote service are connected over HTTP. See the [shared contract](../../../docs/01-development-approach.md), [backend acceptance](../../../docs/03-application-backend-task.md), and [standalone vendor API](api/commissionquote.openapi.json).
 
-## Run
+## Start the complete app
+
+Prerequisites: Go 1.26.4+, Node.js 22.12+, npm, Make, and Bash (`lsof` is used by `make clean`). See [required tools and setup](../../../README.md#required-tools) for installation instructions and the macOS setup script. Run from the repository root:
+
+```sh
+make dev up
+```
+
+The Makefile launches `make quote dev` (8090), `make server dev` (8080), and `make web dev` (5173). The mock selects `test/mock/commissionquote/config/dev.json`; the backend selects `confg/dev.json`. Each component handles its own startup and logs to the terminal. Ctrl+C stops all three process groups.
+
+Provide the shared key in Git-ignored `test/mock/data/API_KEY` before startup; both dev profiles already reference it. The services read the existing file selected by `apiKeyFile`. The Makefile starts and stops the stack directly and never generates or replaces credentials. The key stays server-side.
+
+Open **http://localhost:5173** and enter:
+
+| Loan amount (AUD) | Loan term (months) | Risk band | Expected result |
+| --- | --- | --- | --- |
+| 10000 | 36 | Medium | 2% commission, AUD 200.00, and a nonempty quote ID |
+
+Click **Generate Quote**. The browser sends `POST /api/quotes` through Vite to the application; the application calls mock `POST /quotes` with its private API key. Repeating unchanged input, including after a page reload, reuses the mock's quote while that process remains running. Amounts 100400 and 100429 exercise the two dev failures and display the same generic error; return to 10000 to recover.
+
+## Verify the complete app
+
+With `make dev up` running, use a second terminal at the repository root:
+
+```sh
+npm --prefix web exec -- playwright install chromium
+npm --prefix web run test:integration
+```
+
+The integration check uses real browser requests through both running services. It verifies the example, replay after reload, both dev failures, recovery, and the absence of the private key header from browser requests. It prints the path to a success screenshot saved in the system temporary directory.
+
+Verified on 2026-09-21: these flows passed in Chromium. The successful quote was also submitted and visibly confirmed in Chrome, with no console errors or warnings. Ctrl+C released ports 8090, 8080, and 5173; the stack restarted successfully. CI/random-mode end-to-end simulation and other browser engines are not covered by this dev check.
+
+Independent checks and builds, from the repository root:
+
+```sh
+make server test
+make server build
+make quote build
+make web test
+make web build
+```
+
+Run mock tests separately with `go test -race ./...` from `test/mock/commissionquote/`. `make clean` removes generated files and dependencies, including root and mock `bin/` and `gen/`, while preserving the private key. Stop `make dev up` before cleaning. Cleanup uses `lsof` to stop this worktree's Vite processes.
+
+## Run the mock separately
 
 Prerequisite: Go 1.24 or newer. From the repository root, enter the module and start the service. Run the remaining commands from this module directory:
 
@@ -11,7 +56,7 @@ cd test/mock/commissionquote
 go run ./cmd
 ```
 
-Before startup, provision the private key in `../data/API_KEY` (`test/mock/data/API_KEY` from the repository root; ignored by Git). Both JSON profiles contain `"apiKeyFile": "../../data/API_KEY"`. The future application backend must reference the same private key file. Both profiles set `"port": 8090`. Change this JSON setting to select another port. The service listens on localhost; there are no environment-variable overrides. No database or application backend is needed.
+Before standalone startup, provision the private key in `../data/API_KEY` (`test/mock/data/API_KEY` from the repository root; ignored by Git). Both mock JSON profiles contain `"apiKeyFile": "../../data/API_KEY"`; the application profiles reference the same file. Both mock profiles set `"port": 8090`. Change this JSON setting to select another port. The service listens on localhost; there are no environment-variable overrides. No database or application backend is needed for standalone mock checks.
 
 The default profile is `config/dev.json`, relative to the working directory. To select the CI profile:
 
@@ -21,7 +66,7 @@ go run ./cmd -config config/ci.json
 
 Configuration and the key file are read once; restart after edits or key rotation. Relative `apiKeyFile` paths resolve against the selected JSON file directory, not the shell working directory. Absolute paths are supported. Surrounding whitespace in the key file is trimmed. In production, the deployment platform mounts the value from its secret manager before starting the app; configure `apiKeyFile` to that mounted path. This service reads the file and does not implement secret-manager access or mounting. Development mode returns simulated 400/429 errors for amounts 100400/100429. CI mode returns 503 with probability 0.1, with amount triggers disabled. For deterministic random-mode checks, copy a profile, preserve its port, point `apiKeyFile` to the private file, and set `failureMode: "random"` with `failureRate` set to 0 or 1. Authentication and validation always run first.
 
-## Verify
+## Verify the mock separately
 
 ```sh
 gofmt -l cmd internal/app internal/httpapi internal/config
@@ -66,8 +111,12 @@ Startup must fail for missing/invalid `port` (integer 1–65535), a missing `api
 
 ## Implementation and assumptions
 
-The intended flow is browser → application → commission quote; only the mock is delivered here. The mock uses chi routing and standard-library configuration, JSON, logging, randomness, and synchronization.
+The implemented flow is browser → application → commission quote. Both Go services use chi routing and standard-library HTTP, configuration, JSON, and logging. The application validates browser input and returns every downstream failure as the same generic 500 response, with a three-second timeout and no automatic retries. There is no database, staff authentication, or quote history.
 
 Routes, field limits, rates, fraction units, monetary calculation, idempotency, opaque IDs, and failure probabilities are project assumptions, not vendor requirements from the challenge. Rates are 1%/2%/3% for low/medium/high; calculate integer cents as loan amount times 1/2/3, then return AUD dollars. Term is validated but does not affect commission.
 
 One mutex protects the in-memory input bindings and successful quotes. Failures keep the binding and can be retried; successful replays bypass simulation. There is no TTL, persistence, cross-instance coordination, artificial delay, or automatic retry. Memory grows with distinct valid keys until restart; this is suitable for the local challenge mock.
+
+## AI Usage
+
+Codex assisted with implementing the React UI, Go services, configuration, tests, and local startup tooling from the supplied contracts and user-directed design choices. It ran automated checks, inspected logs, and verified a real quote in the browser. The user reviewed and refined file layout and dependency construction. No AI service is called by the application at runtime.
