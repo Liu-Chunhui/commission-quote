@@ -2,6 +2,28 @@
 
 The React frontend, Go application backend, and independent Go mock quote vendor (`quotevendor`) are connected over HTTP. See the [shared contract](../../../docs/01-development-approach.md), [backend acceptance](../../../docs/03-application-backend-task.md), and [standalone vendor API](api/commissionquote.openapi.json).
 
+## Start the complete app in containers
+
+Start Docker Desktop, provide the shared test key in `test/mock/data/API_KEY`, and run from the repository root:
+
+```sh
+make ci up
+```
+
+Open **http://localhost:8088**. Compose builds all three images, waits for healthy quotevendor → server → web startup, and keeps the containers running in the background. Compose mounts each Go service's JSON profile read-only and passes its path through `--config`; Dockerfiles contain no configuration files. Profiles default to `ci.json`; select alternatives with `SERVER_CONFIG` and `QUOTEVENDOR_CONFIG` as shown in the [root README](../../../README.md#run-the-web-application). The existing key is supplied through read-only Compose secret mounts. Only Nginx's web port is published, on host loopback; it forwards `/api` to the backend over the Compose network. Go and Node.js run inside build containers, so no local dependency installation is needed for this command.
+
+Use 10000 / 36 / Medium for a 2% rate and AUD 200.00 commission. The CI mock intentionally simulates 503 errors with probability 0.1; the browser shows a generic error and permits a manual retry. Successful quotes replay until the mock restarts. For deterministic checks, select a copy of the mock CI profile with `failureRate` set to 0 (success) or 1 (failure). After editing a mounted profile, reload with `docker compose -f test/compose.yaml up --force-recreate --wait`, including the same configuration-file variables; no image rebuild is needed.
+
+```sh
+docker compose -f test/compose.yaml ps
+docker compose -f test/compose.yaml logs server quotevendor
+make ci down
+```
+
+Down removes this stack's containers, network, volumes, and locally built images, preserving the private key and shared Docker build cache. There is no database, migration step, or persistent data volume; quote state stays in mock-process memory.
+
+Verified on 2026-09-22: all three containers became healthy; Chromium calculated AUD 200.00 and replayed the quote after reload with failure rate 0, then displayed the generic error with rate 1. These overrides were applied only inside the test container; the committed CI profile remains 0.1. Logs showed UTC timestamps and one error per service for the failed request. `make ci down` removed the containers, network, and project images while preserving the key. Backend tests/vet, mock race tests/vet, all 16 frontend tests, and container builds passed; each executable production file under `internal/` has 100% statement coverage (`main.go` is exempt).
+
 ## Start the complete app
 
 Prerequisites: Go 1.26.4+, Node.js 22.12+, npm, Make, and Bash (`lsof` is used by `make clean`). See [required tools and setup](../../../README.md#required-tools) for installation instructions and the macOS setup script. Run from the repository root:
@@ -56,7 +78,7 @@ cd test/mock/quotevendor
 go run ./cmd
 ```
 
-Before standalone startup, provision the private key in `../data/API_KEY` (`test/mock/data/API_KEY` from the repository root; ignored by Git). Both mock JSON profiles contain `"apiKeyFile": "../../data/API_KEY"`; the application profiles reference the same file. Both mock profiles set `"port": 8090`. Change this JSON setting to select another port. The service listens on localhost; there are no environment-variable overrides. No database or application backend is needed for standalone mock checks.
+Before standalone startup, provision the private key in `../data/API_KEY` (`test/mock/data/API_KEY` from the repository root; ignored by Git). Both mock JSON profiles contain `"apiKeyFile": "../../data/API_KEY"`; the application profiles reference the same file. Both mock profiles set `"port": 8090`. Change this JSON setting to select another port. JSON `host` selects the listening interface: `localhost` in dev, `0.0.0.0` in CI for container networking. There are no environment-variable overrides. No database or application backend is needed for standalone mock checks.
 
 The default profile is `config/dev.json`, relative to the working directory. To select the CI profile:
 

@@ -11,6 +11,7 @@ import (
 
 // Config contains settings validated by LoadConfig.
 type Config struct {
+	Host        string
 	Port        int
 	APIKey      string
 	FailureMode string
@@ -20,6 +21,7 @@ type Config struct {
 // LoadConfig reads the selected profile once. Amount mode ignores failureRate.
 func LoadConfig(path string) (Config, error) {
 	var profile struct {
+		Host        string          `json:"host"`
 		Port        int             `json:"port"`
 		APIKeyFile  string          `json:"apiKeyFile"`
 		FailureMode string          `json:"failureMode"`
@@ -40,7 +42,7 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, configError("port must be an integer from 1 through 65535.")
 	}
 
-	config := Config{Port: profile.Port, FailureMode: profile.FailureMode}
+	config := Config{Host: profile.Host, Port: profile.Port, FailureMode: profile.FailureMode}
 	switch profile.FailureMode {
 	case "loanAmount":
 		// This mode deliberately ignores failureRate.

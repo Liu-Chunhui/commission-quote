@@ -1,8 +1,10 @@
 .DEFAULT_GOAL := help
-.PHONY: help web server quote dev up build test clean
+.PHONY: help web server quote ci dev up down build test clean
 
 help:
-	@printf '%s\n' 'make dev up        Start quote, web service, and frontend; Ctrl+C stops all' \
+	@printf '%s\n' 'make ci up         Build and start containers at http://localhost:8088' \
+		'make ci down       Remove CI containers, network, volumes, and local images' \
+		'make dev up        Start quote, web service, and frontend; Ctrl+C stops all' \
 		'make web dev       Start the frontend only' \
 		'make web build     Build the frontend' \
 		'make web test      Run frontend browser tests' \
@@ -21,7 +23,21 @@ ifneq ($(word 2,$(sort $(filter web server quote,$(MAKECMDGOALS)))),)
 $(error Choose only one component: web, server, or quote)
 endif
 
-ifneq ($(filter up,$(MAKECMDGOALS)),)
+ifneq ($(filter ci,$(MAKECMDGOALS)),)
+ifeq ($(filter-out ci up down,$(MAKECMDGOALS)),)
+ci:
+	@:
+
+up:
+	docker compose -f test/compose.yaml up --build --wait
+	@printf '%s\n' 'Open http://localhost:8088'
+
+down:
+	docker compose -f test/compose.yaml down --volumes --remove-orphans --rmi local
+else
+$(error Use make ci up or make ci down)
+endif
+else ifneq ($(filter up,$(MAKECMDGOALS)),)
 ifneq ($(sort $(MAKECMDGOALS)),dev up)
 $(error Use make dev up to start all components)
 endif

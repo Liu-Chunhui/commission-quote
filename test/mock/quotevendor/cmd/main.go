@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -29,7 +30,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    "localhost:" + strconv.Itoa(cfg.Port),
+		Addr:    net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 		Handler: app.NewRouter(cfg),
 	}
 

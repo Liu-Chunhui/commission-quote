@@ -119,16 +119,17 @@ The frontend uses one generic failure flow, without vendor-specific status/code 
 
 | Setting | Owner | Default or requirement |
 | --- | --- | --- |
-| Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080; binds to `localhost` |
-| Application JSON `dependencies.commissionquote.baseUrl` | B | Required absolute HTTP(S) base URL; both profiles use `http://localhost:8090`; the client appends `/quotes` |
-| Mock JSON `port` | A | Integer from 1 through 65535; both mock profiles use 8090; binds to `localhost`; no `VENDOR_ADDR` override |
+| JSON `host` | A, B | Dev profiles bind to `localhost`; CI profiles bind to `0.0.0.0` for container networking |
+| Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080 |
+| Application JSON `dependencies.commissionquote.baseUrl` | B | Required absolute HTTP(S) base URL; dev uses `http://localhost:8090`, CI uses Compose DNS `http://quotevendor:8090`; the client appends `/quotes` |
+| Mock JSON `port` | A | Integer from 1 through 65535; both mock profiles use 8090; no `VENDOR_ADDR` override |
 | Application JSON `apiKeyFile` | B | Required key file; both profiles use `../test/mock/data/API_KEY`, sharing the mock service's private key |
 
 The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports or base URLs stop startup. Base URLs must not contain credentials, query strings, or fragments. The file is the source of the application port and downstream base URL; `APP_ADDR` and `VENDOR_BASE_URL` are not used.
 
 The application resolves relative `apiKeyFile` paths against the selected profile directory and supports absolute mount paths. It loads the key into `Config.APIKey`, trims surrounding whitespace, and rejects missing, unreadable, or empty key files. Credentials are not read from JSON values or environment variables, included in serialized configuration, or logged.
 
-The frontend runs on port 5173 and proxies `/api` to the application. Mock failure profiles belong only to A:
+The dev frontend runs on port 5173 and proxies `/api` through Vite. In CI, Nginx serves the built frontend on host port 8088 and proxies `/api` to `server:8080`; only this web port is published, bound to host loopback. Mock failure profiles belong only to A:
 
 | Profile | Failure behavior |
 | --- | --- |

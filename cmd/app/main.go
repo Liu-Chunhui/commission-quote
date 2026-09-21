@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -39,7 +40,7 @@ func main() {
 	}
 	quoteClient := commissionquote.NewQuoteClient(httpClient, appConfig.Dependencies.CommissionQuote.BaseURL, appConfig.APIKey)
 	server := &http.Server{
-		Addr:              "localhost:" + strconv.Itoa(appConfig.Port),
+		Addr:              net.JoinHostPort(appConfig.Host, strconv.Itoa(appConfig.Port)),
 		Handler:           app.NewRouter(quoteClient),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

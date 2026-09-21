@@ -50,7 +50,7 @@ make server build
 make server dev
 ```
 
-The build writes `bin/app`; tests write `gen/coverage.out`. Start the built server with `./bin/app --config confg/ci.json` for the CI profile. Omitting `--config` selects the dev profile.
+The build writes `bin/app`; tests write `gen/coverage.out`. Start the built server locally with `./bin/app --config confg/dev.json`. Omitting `--config` selects the dev profile. `make ci up` selects `confg/ci.json` inside Docker, where the `quotevendor` hostname resolves through Compose networking; `make ci down` removes that container stack.
 
 To start the real dependency, backend, and frontend together, run `make dev up`; it calls `make quote dev`, `make server dev`, and `make web dev`. See the [combined startup instructions](../test/mock/quotevendor/README.md#start-the-complete-app).
 

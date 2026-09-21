@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	Host         string `json:"host"`
 	Port         int    `json:"port"`
 	APIKey       string `json:"-"`
 	Dependencies struct {
