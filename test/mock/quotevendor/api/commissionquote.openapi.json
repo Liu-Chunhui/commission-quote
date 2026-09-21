@@ -1,14 +1,14 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Mock Commission Quote Service API",
+    "title": "Mock Quote Vendor API",
     "version": "1.0.0",
-    "description": "Standalone vendor contract for test/mock/commissionquote/. The application backend calls this API; its /api/quotes endpoint is not part of this service. All amounts are AUD. QuoteRequest is the authoritative field-validation schema shared by the mock, application backend, and frontend. One generic set of project limits applies to every request; no product categories or inferred categories apply. See docs/01-development-approach.md for shared validation semantics, acceptance cases, and application error mappings. This specification defines required behavior, not implementation status."
+    "description": "Standalone vendor contract for test/mock/quotevendor/. The application backend calls this API; its /api/quotes endpoint is not part of this service. All amounts are AUD. QuoteRequest is the authoritative field-validation schema shared by the mock, application backend, and frontend. One generic set of project limits applies to every request; no product categories or inferred categories apply. See docs/01-development-approach.md for shared validation semantics, acceptance cases, and application error mappings. This specification defines required behavior, not implementation status."
   },
   "servers": [
     {
       "url": "http://localhost:8090",
-      "description": "Local standalone commission quote"
+      "description": "Local standalone quote vendor"
     }
   ],
   "security": [
@@ -393,7 +393,7 @@
     }
   },
   "x-mock-configuration": {
-    "workingDirectory": "test/mock/commissionquote/",
+    "workingDirectory": "test/mock/quotevendor/",
     "loading": "Select one file with the standard -config flag, defaulting to config/dev.json; use -config config/ci.json for CI. Selected config paths are relative to the mock service working directory; relative apiKeyFile paths resolve against the selected config directory. Read only the selected file once at startup; no profile merging. Restart the service after changes. All runtime settings, including port, come from the selected file; no environment-variable overrides. Failure simulation follows authentication, validation, and idempotency conflict checks; successful replays bypass it.",
     "modes": {
       "random": "Require failureRate as a number from 0 through 1. Missing, null, wrong-type, and out-of-range rates fail startup; zero is valid. Amount triggers are disabled. Use 0 for deterministic success and 1 for deterministic 503 responses.",
@@ -427,8 +427,8 @@
       }
     },
     "files": {
-      "dev": "test/mock/commissionquote/config/dev.json",
-      "ci": "test/mock/commissionquote/config/ci.json"
+      "dev": "test/mock/quotevendor/config/dev.json",
+      "ci": "test/mock/quotevendor/config/ci.json"
     },
     "selection": {
       "flag": "-config",

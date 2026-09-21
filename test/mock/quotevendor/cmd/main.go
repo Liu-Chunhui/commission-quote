@@ -7,8 +7,8 @@ import (
 	"os"
 	"strconv"
 
-	"commissionquote/mock/internal/app"
-	"commissionquote/mock/internal/config"
+	"quotevendor/internal/app"
+	"quotevendor/internal/config"
 )
 
 func main() {
@@ -33,10 +33,10 @@ func main() {
 		Handler: app.NewRouter(cfg),
 	}
 
-	slog.Info("commission quote starting", "service", "commission-quote", "operation", "startup")
+	slog.Info("Quote vendor starting", "service", "quotevendor", "operation", "startup")
 
 	if err := server.ListenAndServe(); err != nil {
-		slog.Error("Unable to serve HTTP requests", "service", "commission-quote", "operation", "serve", "error_code", "INTERNAL_ERROR", "cause", err)
+		slog.Error("Unable to serve HTTP requests", "service", "quotevendor", "operation", "serve", "error_code", "INTERNAL_ERROR", "cause", err)
 		os.Exit(1)
 	}
 }

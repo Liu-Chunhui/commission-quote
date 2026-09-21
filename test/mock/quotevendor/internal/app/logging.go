@@ -16,7 +16,7 @@ func LogRequests(next http.Handler) http.Handler {
 		start := time.Now().UTC()
 		requestID := rand.Text()
 		r = r.WithContext(context.WithValue(r.Context(), middleware.RequestIDKey, requestID))
-		logger := slog.Default().With("service", "commission-quote", "request_id", requestID)
+		logger := slog.Default().With("service", "quotevendor", "request_id", requestID)
 		response := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
 		logger.Info("Request started", "operation", "http_request", "method", r.Method, "path", r.URL.Path)

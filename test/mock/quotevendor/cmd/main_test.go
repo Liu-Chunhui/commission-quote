@@ -17,7 +17,7 @@ func TestLogTimestampsUTC(t *testing.T) {
 	}
 
 	directory := t.TempDir()
-	binary := filepath.Join(directory, "commissionquote")
+	binary := filepath.Join(directory, "quotevendor")
 	build := exec.Command("go", "build", "-o", binary, ".")
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)

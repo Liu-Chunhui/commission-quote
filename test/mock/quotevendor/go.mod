@@ -1,4 +1,4 @@
-module commissionquote/mock
+module quotevendor
 
 go 1.24.0
 

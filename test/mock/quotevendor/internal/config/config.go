@@ -76,6 +76,6 @@ func LoadConfig(path string) (Config, error) {
 }
 
 func configError(message string) error {
-	slog.Error(message, "service", "commission-quote", "operation", "load_config", "error_code", "INVALID_CONFIG")
+	slog.Error(message, "service", "quotevendor", "operation", "load_config", "error_code", "INVALID_CONFIG")
 	return errors.New(message)
 }

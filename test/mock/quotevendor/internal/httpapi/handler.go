@@ -3,7 +3,7 @@ package httpapi
 import (
 	"sync"
 
-	"commissionquote/mock/internal/config"
+	"quotevendor/internal/config"
 )
 
 type storedQuote struct {

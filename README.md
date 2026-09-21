@@ -30,4 +30,4 @@ make dev up
 
 Before startup, provide the shared key in Git-ignored `test/mock/data/API_KEY`, as referenced by both dev profiles. The services read this existing file; the startup command does not generate or replace it. Open **http://localhost:5173**. The command installs frontend dependencies when needed and starts the mock API (8090), application backend (8080), and frontend (5173). Press Ctrl+C to stop all three components.
 
-See the [challenge README](test/mock/commissionquote/README.md) for example inputs, tests, configuration, assumptions, and AI usage.
+See the [challenge README](test/mock/quotevendor/README.md) for example inputs, tests, configuration, assumptions, and AI usage.

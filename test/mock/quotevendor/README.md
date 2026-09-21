@@ -1,6 +1,6 @@
 # Commission Quote App
 
-The React frontend, Go application backend, and independent Go mock quote service are connected over HTTP. See the [shared contract](../../../docs/01-development-approach.md), [backend acceptance](../../../docs/03-application-backend-task.md), and [standalone vendor API](api/commissionquote.openapi.json).
+The React frontend, Go application backend, and independent Go mock quote vendor (`quotevendor`) are connected over HTTP. See the [shared contract](../../../docs/01-development-approach.md), [backend acceptance](../../../docs/03-application-backend-task.md), and [standalone vendor API](api/commissionquote.openapi.json).
 
 ## Start the complete app
 
@@ -10,7 +10,7 @@ Prerequisites: Go 1.26.4+, Node.js 22.12+, npm, Make, and Bash (`lsof` is used b
 make dev up
 ```
 
-The Makefile launches `make quote dev` (8090), `make server dev` (8080), and `make web dev` (5173). The mock selects `test/mock/commissionquote/config/dev.json`; the backend selects `confg/dev.json`. Each component handles its own startup and logs to the terminal. Ctrl+C stops all three process groups.
+The Makefile launches `make quote dev` (8090), `make server dev` (8080), and `make web dev` (5173). The mock selects `test/mock/quotevendor/config/dev.json`; the backend selects `confg/dev.json`. Each component handles its own startup and logs to the terminal. Ctrl+C stops all three process groups.
 
 Provide the shared key in Git-ignored `test/mock/data/API_KEY` before startup; both dev profiles already reference it. The services read the existing file selected by `apiKeyFile`. The Makefile starts and stops the stack directly and never generates or replaces credentials. The key stays server-side.
 
@@ -45,14 +45,14 @@ make web test
 make web build
 ```
 
-Run mock tests separately with `go test -race ./...` from `test/mock/commissionquote/`. `make clean` removes generated files and dependencies, including root and mock `bin/` and `gen/`, while preserving the private key. Stop `make dev up` before cleaning. Cleanup uses `lsof` to stop this worktree's Vite processes.
+Run mock tests separately with `go test -race ./...` from `test/mock/quotevendor/`. `make clean` removes generated files and dependencies, including root and mock `bin/` and `gen/`, while preserving the private key. Stop `make dev up` before cleaning. Cleanup uses `lsof` to stop this worktree's Vite processes.
 
 ## Run the mock separately
 
 Prerequisite: Go 1.24 or newer. From the repository root, enter the module and start the service. Run the remaining commands from this module directory:
 
 ```sh
-cd test/mock/commissionquote
+cd test/mock/quotevendor
 go run ./cmd
 ```
 
@@ -72,7 +72,7 @@ Configuration and the key file are read once; restart after edits or key rotatio
 gofmt -l cmd internal/app internal/httpapi internal/config
 go test -race ./...
 go vet ./...
-go build -o /tmp/commissionquote-vendor ./cmd
+go build -o /tmp/quotevendor ./cmd
 curl --fail --silent http://localhost:8090/health
 ```
 
@@ -111,7 +111,7 @@ Startup must fail for missing/invalid `port` (integer 1–65535), a missing `api
 
 ## Implementation and assumptions
 
-The implemented flow is browser → application → commission quote. Both Go services use chi routing and standard-library HTTP, configuration, JSON, and logging. The application validates browser input and returns every downstream failure as the same generic 500 response, with a three-second timeout and no automatic retries. There is no database, staff authentication, or quote history.
+The implemented flow is browser → application → quotevendor. Both Go services use chi routing and standard-library HTTP, configuration, JSON, and logging. The application validates browser input and returns every downstream failure as the same generic 500 response, with a three-second timeout and no automatic retries. There is no database, staff authentication, or quote history.
 
 Routes, field limits, rates, fraction units, monetary calculation, idempotency, opaque IDs, and failure probabilities are project assumptions, not vendor requirements from the challenge. Rates are 1%/2%/3% for low/medium/high; calculate integer cents as loan amount times 1/2/3, then return AUD dollars. Term is validated but does not affect commission.
 

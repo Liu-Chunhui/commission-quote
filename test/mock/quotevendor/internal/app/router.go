@@ -3,8 +3,8 @@ package app
 import (
 	"net/http"
 
-	"commissionquote/mock/internal/config"
-	"commissionquote/mock/internal/httpapi"
+	"quotevendor/internal/config"
+	"quotevendor/internal/httpapi"
 
 	"github.com/go-chi/chi/v5"
 )

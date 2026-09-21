@@ -10,7 +10,7 @@ import (
 )
 
 func requestLogger(ctx context.Context) *slog.Logger {
-	return slog.Default().With("service", "commission-quote", "request_id", middleware.GetReqID(ctx))
+	return slog.Default().With("service", "quotevendor", "request_id", middleware.GetReqID(ctx))
 }
 
 func validKey(key string) bool {

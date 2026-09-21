@@ -15,7 +15,7 @@ Define the APIs and task boundaries first, develop the three parts in parallel, 
 | 2:30–3:20 | Connect the three components | End-to-end success and failure flows work |
 | 3:20–4:00 | Fix defects, review coverage, and finish handoff | Checks and run instructions are reproducible |
 
-Use Go for both services and React with TypeScript for the UI. Services use separate Go modules and communicate only over HTTP; no shared Go package or Go workspace. The integration owner maintains the root `commissionquote` module, shared documents/configuration, and the final `test/mock/commissionquote/README.md`. Coordinate contract changes through that owner.
+Use Go for both services and React with TypeScript for the UI. Services use separate Go modules and communicate only over HTTP; no shared Go package or Go workspace. The integration owner maintains the root `commissionquote` module, shared documents/configuration, and the final `test/mock/quotevendor/README.md`. Coordinate contract changes through that owner.
 
 The challenge requires the form, quote results, vendor API-key protection, occasional random failures, error handling, tests, and setup/AI-usage notes. The stack, routes, numeric limits, formula, idempotency, and error mappings below are project decisions. No database, staff login, quote history, automatic retries, or deployment infrastructure is required. The mock's in-memory idempotency state is the only quote cache.
 
@@ -29,7 +29,7 @@ The challenge requires the form, quote results, vendor API-key protection, occas
 The browser calls only the application. The application validates input, forwards the key, calls the vendor, and returns the quote or the generic public failure response. The vendor authenticates before validating input. Keep its API key out of browser code, requests, and logs.
 
 - [Web API specification](../api/webapi.openapi.json): browser-facing contract for B and C.
-- [Vendor specification](../test/mock/commissionquote/api/commissionquote.openapi.json): vendor contract for A and B.
+- [Vendor specification](../test/mock/quotevendor/api/commissionquote.openapi.json): vendor contract for A and B.
 
 The vendor's `QuoteRequest` schema is the shared field definition. Keep both specifications' request/quote schemas and UUIDv5 definition identical. Each specification remains self-contained; exact response messages and full JSON examples belong there.
 
@@ -132,8 +132,8 @@ The frontend runs on port 5173 and proxies `/api` to the application. Mock failu
 
 | Profile | Failure behavior |
 | --- | --- |
-| [config/dev.json](../test/mock/commissionquote/config/dev.json) | `loanAmount`: exact amount 100400 → 400; 100429 → 429; all others succeed |
-| [config/ci.json](../test/mock/commissionquote/config/ci.json) | `random`: 503 with `failureRate: 0.1`; otherwise success; amount triggers disabled |
+| [config/dev.json](../test/mock/quotevendor/config/dev.json) | `loanAmount`: exact amount 100400 → 400; 100429 → 429; all others succeed |
+| [config/ci.json](../test/mock/quotevendor/config/ci.json) | `random`: 503 with `failureRate: 0.1`; otherwise success; amount triggers disabled |
 
 All commission quote runtime settings come from the selected JSON profile; there are no environment-variable overrides. Both profiles reference `../../data/API_KEY` using `apiKeyFile`, resolved relative to the selected profile directory. Absolute file paths are supported for production mounts. Keep the local `test/mock/data/API_KEY` out of Git. The deployment platform supplies the secret-manager value as a file before startup; the service reads it once, trims surrounding whitespace, and rejects a missing or empty key. It does not read an `API_KEY` environment variable or contact a secret manager. Restart after key rotation.
 
@@ -147,7 +147,7 @@ All tasks must build, satisfy their API contract, and provide reproducible comma
 
 ## Final integration
 
-Development integration has been verified for successful quotes, replay after reload, both dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/commissionquote/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
+Development integration has been verified for successful quotes, replay after reload, both dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
 
 After independent acceptance and merging:
 
@@ -155,4 +155,4 @@ After independent acceptance and merging:
 2. Repeat unchanged input after success/reload: same key and quote. To test conflicts, manually reuse the old key with changed input: the quote service returns 409 internally and the Web API returns generic 500. The UI normally derives a different key.
 3. Exercise both dev trigger amounts and a temporary random config with rate 1. Verify the same generic public failure, UI recovery, and distinct internal causes in logs. Confirm timeout handling with B's slow-vendor test and C's mocked timeout response; no production delay endpoint is needed.
 4. Smoke-check the CI profile, restore dev for local work, run both Go suites and the frontend build, and record browser checks and coverage.
-5. Finish `test/mock/commissionquote/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.
+5. Finish `test/mock/quotevendor/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.

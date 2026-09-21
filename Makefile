@@ -10,7 +10,7 @@ help:
 		'make server build  Build the backend to bin/app' \
 		'make server test   Run backend tests with coverage in gen/coverage.out' \
 		'make quote dev     Start the mock quote service with config/dev.json' \
-		'make quote build   Build the mock quote service to test/mock/commissionquote/bin/quote' \
+		'make quote build   Build the mock quote service to test/mock/quotevendor/bin/quote' \
 		'make clean         Stop Vite and remove dependencies and generated files'
 
 # Make treats the component and the following action as separate targets.
@@ -40,11 +40,11 @@ up:
 	wait
 else ifneq ($(filter quote,$(MAKECMDGOALS)),)
 dev:
-	cd test/mock/commissionquote && go run ./cmd --config config/dev.json
+	cd test/mock/quotevendor && go run ./cmd --config config/dev.json
 
 build:
-	mkdir -p test/mock/commissionquote/bin
-	cd test/mock/commissionquote && go build -o bin/quote ./cmd
+	mkdir -p test/mock/quotevendor/bin
+	cd test/mock/quotevendor && go build -o bin/quote ./cmd
 
 test:
 	$(error make quote supports dev and build only)
@@ -77,5 +77,5 @@ clean:
 		esac; \
 	done
 	rm -rf bin gen web/node_modules web/dist web/test-results web/playwright-report
-	rm -rf test/mock/commissionquote/bin test/mock/commissionquote/gen
+	rm -rf test/mock/quotevendor/bin test/mock/quotevendor/gen
 	rm -f app coverage.out coverage.html

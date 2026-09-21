@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"commissionquote/mock/internal/app"
-	"commissionquote/mock/internal/config"
+	"quotevendor/internal/app"
+	"quotevendor/internal/config"
 )
 
 const _validBody = `{"loanAmount":10000,"loanTermInMonths":36,"riskBand":"medium"}`
@@ -187,7 +187,7 @@ func TestRequestLogs(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if record["service"] != "commission-quote" || record["request_id"] == "" || record["request_id"] == nil || record["operation"] == nil {
+		if record["service"] != "quotevendor" || record["request_id"] == "" || record["request_id"] == nil || record["operation"] == nil {
 			t.Fatalf("missing context: %v", record)
 		}
 		records = append(records, record)

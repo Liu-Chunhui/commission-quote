@@ -1,8 +1,8 @@
 # Task B: Application Backend
 
-Implement the browser-facing API and outbound vendor call. Read the [shared contract and acceptance rules](01-development-approach.md), [Web API](../api/webapi.openapi.json), and [Vendor API](../test/mock/commissionquote/api/commissionquote.openapi.json).
+Implement the browser-facing API and outbound vendor call. Read the [shared contract and acceptance rules](01-development-approach.md), [Web API](../api/webapi.openapi.json), and [Vendor API](../test/mock/quotevendor/api/commissionquote.openapi.json).
 
-**Status:** Task B is implemented and has passed independent acceptance. Both `GET /health` and `POST /api/quotes` are wired through the running application. Development browser → application → mock-service verification is recorded separately in the [combined README](../test/mock/commissionquote/README.md#verify-the-complete-app); the checks below remain independent.
+**Status:** Task B is implemented and has passed independent acceptance. Both `GET /health` and `POST /api/quotes` are wired through the running application. Development browser → application → mock-service verification is recorded separately in the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app); the checks below remain independent.
 
 ## Scope
 
@@ -52,9 +52,9 @@ make server dev
 
 The build writes `bin/app`; tests write `gen/coverage.out`. Start the built server with `./bin/app --config confg/ci.json` for the CI profile. Omitting `--config` selects the dev profile.
 
-To start the real dependency, backend, and frontend together, run `make dev up`; it calls `make quote dev`, `make server dev`, and `make web dev`. See the [combined startup instructions](../test/mock/commissionquote/README.md#start-the-complete-app).
+To start the real dependency, backend, and frontend together, run `make dev up`; it calls `make quote dev`, `make server dev`, and `make web dev`. See the [combined startup instructions](../test/mock/quotevendor/README.md#start-the-complete-app).
 
-Run `make clean` to remove `bin/` and `gen/` from both the repository root and `test/mock/commissionquote/`, legacy root build/coverage outputs (`app`, `coverage.out`, `coverage.html`), and the frontend's generated files and dependencies. It also stops this worktree's Vite processes; source files, configuration, and private key files are preserved.
+Run `make clean` to remove `bin/` and `gen/` from both the repository root and `test/mock/quotevendor/`, legacy root build/coverage outputs (`app`, `coverage.out`, `coverage.html`), and the frontend's generated files and dependencies. It also stops this worktree's Vite processes; source files, configuration, and private key files are preserved.
 
 Production Go files target **greater than 90% statement coverage per file**, excluding `main.go` and test code. Aggregate covered/total statements per file; package averages are insufficient. Explain shortfalls without adding test-only production abstractions. This root test command excludes A's independent module.
 
