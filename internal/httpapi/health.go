@@ -1,4 +1,4 @@
-package app
+package httpapi
 
 import (
 	"log/slog"
@@ -7,7 +7,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func health(w http.ResponseWriter, r *http.Request) {
+func Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if _, err := w.Write([]byte("ok")); err != nil {
 		slog.ErrorContext(r.Context(), "Health response could not be written",

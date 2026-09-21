@@ -35,7 +35,7 @@ The vendor's `QuoteRequest` schema is the shared field definition. Keep both spe
 
 ### Health checks
 
-Every microservice exposes `GET /health`, registered with `router.Get("/health", health)`. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
+Every microservice exposes `GET /health`, registered with chi. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
 
 ## Request validation contract
 

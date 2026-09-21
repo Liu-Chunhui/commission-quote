@@ -1,4 +1,4 @@
-package app
+package httpapi_test
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"commissionquote/internal/app"
 )
 
 type failedResponseWriter struct {
@@ -21,7 +23,7 @@ func TestHealth(t *testing.T) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 
-	NewRouter().ServeHTTP(response, request)
+	app.NewRouter().ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", response.Code)
@@ -42,7 +44,7 @@ func TestRequestLogs(t *testing.T) {
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
-	router := NewRouter()
+	router := app.NewRouter()
 	requestIDs := make(map[string]bool)
 	cases := []struct {
 		name      string
