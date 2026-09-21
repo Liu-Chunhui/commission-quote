@@ -120,11 +120,11 @@ The frontend uses one generic failure flow, without vendor-specific status/code 
 | Setting | Owner | Default or requirement |
 | --- | --- | --- |
 | Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080; binds to `localhost` |
-| `VENDOR_BASE_URL` | B | `http://localhost:8090`; append `/quotes` |
+| Application JSON `dependencies.commissionquote.baseUrl` | B | Required absolute HTTP(S) base URL; both profiles use `http://localhost:8090`; the client appends `/quotes` |
 | `VENDOR_ADDR` | A | `localhost:8090` |
 | `VENDOR_API_KEY` | A and B | Required environment variable; same private value in both processes |
 
-The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports stop startup. The file is the only source of the application port; `APP_ADDR` is no longer used.
+The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports or base URLs stop startup. Base URLs must not contain credentials, query strings, or fragments. The file is the source of the application port and downstream base URL; `APP_ADDR` and `VENDOR_BASE_URL` are not used.
 
 The frontend runs on port 5173 and proxies `/api` to the application. Mock failure profiles belong only to A:
 

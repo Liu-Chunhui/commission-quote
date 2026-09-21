@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"commissionquote/internal/app"
+	"commissionquote/internal/config"
 )
 
 func main() {
@@ -24,7 +25,7 @@ func main() {
 	configPath := flag.String("config", "confg/dev.json", "path to application JSON configuration")
 	flag.Parse()
 
-	appConfig, err := app.LoadConfig(*configPath)
+	appConfig, err := config.LoadConfig(*configPath)
 	if err != nil {
 		os.Exit(1)
 	}

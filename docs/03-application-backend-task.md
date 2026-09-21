@@ -4,18 +4,18 @@ Implement the browser-facing API and outbound vendor call. Read the [shared cont
 
 ## Scope
 
-Own `cmd/app/`, `internal/app/`, `internal/httpapi/`, `internal/integration/`, `confg/`, and `api/webapi.openapi.json`. Start after the integration owner prepares the root module.
+Own `cmd/app/`, `internal/app/`, `internal/config/`, `internal/httpapi/`, `internal/integration/`, `confg/`, and `api/webapi.openapi.json`. Start after the integration owner prepares the root module.
 
 Do not modify A's service or C's UI. Keep the backend thin: no commission calculation, quote ID generation, failure simulation, idempotency store, repository layer, or single-implementation client interface. Coordinate API changes with the integration owner.
 
 ## Implementation context
 
-- Load application settings in `internal/app/config.go` using the standard library; keep its tests in `internal/app/config_test.go`. Select the JSON file with `--config`; follow the [shared runtime configuration](01-development-approach.md#runtime-configuration). Configuration errors are logged once by the loader before startup exits.
+- Load application settings in `internal/config/config.go` using the standard library; keep its tests in `internal/config/config_test.go`. Select the JSON file with `--config`; follow the [shared runtime configuration](01-development-approach.md#runtime-configuration). Configuration errors are logged once by the loader before startup exits.
 - Validate at the incoming HTTP boundary. Forward the payload and idempotency key with the private vendor API key, using an actual `http.Client`.
 - Keep downstream calls in `internal/integration/`. `NewQuoteClient(baseURL, apiKey)` constructs the concrete client; `GenerateQuote(ctx, key, input)` accepts already-validated input and returns a validated quote or a safe error. Credential loading belongs to startup wiring, not the client. The supplied vendor contract's `apiKeyFile` setting describes the vendor's own startup configuration.
 - Apply the shared timeout/cancellation and public error boundary. Check external response decoding and required fields, close response bodies, and return quote fields unchanged; do not recalculate vendor business rules.
 - Handle the quote service's HTTP status and documented `error.code` internally, including invalid request, authentication failure, conflict, rate limit, unavailable service, and internal error. Record the failed operation and safe cause in logs; unknown codes, malformed error bodies, connection failures, invalid success payloads, and timeouts also produce the same public failure. Never forward upstream status, headers, code, message, or raw body. No per-error retry behavior is required.
-- Missing required API key stops startup. Keep runtime wiring in `cmd/app/main.go`, configuration, routing, and request logging in `internal/app/`, and HTTP handlers in `internal/httpapi/`. Keep tests beside the implementation.
+- Missing required API key stops startup. Keep runtime wiring in `cmd/app/main.go`, routing and request logging in `internal/app/`, configuration in `internal/config/`, and HTTP handlers in `internal/httpapi/`. Keep tests beside the implementation.
 
 ## Acceptance
 
@@ -39,7 +39,7 @@ Use synthetic test credentials. A shorter timeout is acceptable through existing
 After implementation, run from the repository root, with the API key supplied privately:
 
 ```sh
-gofmt -w cmd/app internal/app internal/httpapi internal/integration
+gofmt -w cmd/app internal/app internal/config internal/httpapi internal/integration
 make server test
 go tool cover -html=gen/coverage.out
 make server build
