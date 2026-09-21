@@ -1,0 +1,494 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Mock Quote Vendor API",
+    "version": "1.0.0",
+    "description": "Standalone vendor contract for test/mock/quotevendor/. The application backend calls this API; its /api/quotes endpoint is not part of this service. All amounts are AUD. QuoteRequest is the authoritative field-validation schema shared by the mock, application backend, and frontend. One generic set of project limits applies to every request; no product categories or inferred categories apply. See docs/01-development-approach.md for shared validation semantics, acceptance cases, and application error mappings. This specification defines required behavior, not implementation status."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8090",
+      "description": "Local standalone quote vendor"
+    }
+  ],
+  "security": [
+    {
+      "VendorApiKey": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Check service liveness",
+        "description": "Local liveness only. Requires no request body, API key, or idempotency key. Does not call downstream services or apply quote validation, idempotency, or simulated failures.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The service is running.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "ok"
+                  ]
+                },
+                "example": "ok"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quotes": {
+      "description": "Generate a quote.",
+      "post": {
+        "operationId": "generateCommissionQuote",
+        "summary": "Generate a mock commission quote",
+        "description": "For POST requests, authenticate first, then validate the required idempotency-key header and JSON body. Atomically bind/check the key: changed valid input returns 409; an existing successful result is replayed unchanged. Otherwise apply exactly one configured failure mode, calculate a quote on success, and store it before returning. Failures retain only the input binding and can be retried. See x-idempotency. In random mode, return 503 with failureRate probability; all amounts follow the same rule. In loanAmount mode, exact amount 100400 returns 400 and 100429 returns 429; all other valid amounts succeed. Invalid authentication or input always takes precedence over simulated failures. The service performs no real rate limiting, artificial delay, persistence, or automatic retries. Amounts are dollars, not cents. The commission rate is a decimal fraction, not a percentage number.",
+        "requestBody": {
+          "required": true,
+          "description": "Require one valid JSON object with integer loan amount and term, and an allowed risk band. Missing/null fields, wrong types including numeric strings, fractional amounts/terms, invalid ranges, and trailing JSON values return 400. Ignore extra fields. Do not round, clamp, or supply defaults to make invalid input valid.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              },
+              "examples": {
+                "badRequestTrigger": {
+                  "summary": "Returns 400 only in loanAmount mode",
+                  "value": {
+                    "loanAmount": "100400",
+                    "loanTermInMonths": 36,
+                    "riskBand": "medium"
+                  }
+                },
+                "rateLimitTrigger": {
+                  "summary": "Returns 429 only in loanAmount mode",
+                  "value": {
+                    "loanAmount": "100429",
+                    "loanTermInMonths": 36,
+                    "riskBand": "medium"
+                  }
+                },
+                "standardQuote": {
+                  "summary": "Standard valid request",
+                  "value": {
+                    "loanAmount": "10000",
+                    "loanTermInMonths": 36,
+                    "riskBand": "medium"
+                  }
+                },
+                "largerAmount": {
+                  "summary": "Larger valid amount with the same validation rules",
+                  "value": {
+                    "loanAmount": "750000",
+                    "loanTermInMonths": 360,
+                    "riskBand": "medium"
+                  }
+                },
+                "commissionCents": {
+                  "summary": "Integer loan amount producing commission cents",
+                  "value": {
+                    "loanAmount": "4001",
+                    "loanTermInMonths": 36,
+                    "riskBand": "low"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated quote. A fresh opaque quoteId is generated on the first success for a key; repeated equivalent requests return the stored successful quote unchanged. Rates are low=0.01, medium=0.02, high=0.03. Calculate commission cents as the integer loan amount times ratePercent (1, 2, or 3), then return AUD dollars; no rounding step is needed. Term is validated but does not affect the mock formula.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponse"
+                },
+                "examples": {
+                  "standardQuote": {
+                    "value": {
+                      "quoteId": "quote-example-standard",
+                      "commissionRate": "0.02",
+                      "totalCommission": "200"
+                    }
+                  },
+                  "largerAmount": {
+                    "value": {
+                      "quoteId": "quote-example-larger",
+                      "commissionRate": "0.02",
+                      "totalCommission": "15000"
+                    }
+                  },
+                  "commissionCents": {
+                    "value": {
+                      "quoteId": "quote-example-cents",
+                      "commissionRate": "0.01",
+                      "totalCommission": "40.01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST: missing/invalid idempotency-key, malformed JSON, invalid request fields, or exact amount 100400 in loanAmount mode. Validation errors identify the field and reason; wording may vary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "validation": {
+                    "value": {
+                      "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "loanAmount must be between AUD 4000 and AUD 10000000."
+                      }
+                    }
+                  },
+                  "amountTrigger": {
+                    "value": {
+                      "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "Simulated vendor bad request."
+                      }
+                    }
+                  },
+                  "idempotencyKey": {
+                    "value": {
+                      "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "idempotency-key must contain 1 to 255 printable ASCII characters without spaces."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHORIZED: api-key header is missing or does not match the configured key. Checked before POST body validation or failure simulation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "value": {
+                      "error": {
+                        "code": "UNAUTHORIZED",
+                        "message": "A valid API key is required."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT: this key is bound to different validated input. Checked before failure simulation, including if the previous attempt failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "IDEMPOTENCY_CONFLICT",
+                    "message": "This request key was already used with different loan details. Submit a new quote."
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS: exact amount 100429 in loanAmount mode. This is deterministic simulation, not a real request counter. No Retry-After header is supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "rateLimited": {
+                    "value": {
+                      "error": {
+                        "code": "TOO_MANY_REQUESTS",
+                        "message": "Too many quote requests. Please try again later."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "INTERNAL_ERROR: unexpected local failure. Never expose internal details or credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "internalError": {
+                    "value": {
+                      "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": "Unable to generate a quote."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "VENDOR_UNAVAILABLE: selected by random failure simulation. Rate 1 always selects this response for authenticated, valid requests without a stored successful response; rate 0 never does.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "error": {
+                        "code": "VENDOR_UNAVAILABLE",
+                        "message": "The quote provider is temporarily unavailable."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "description": "Caller-generated opaque, case-sensitive key. Missing/invalid values return 400 after API-key authentication. The application forwards the browser key unchanged. See x-idempotency for replay, conflicts, and retention. The frontend uses the deterministic UUIDv5 algorithm in x-idempotency.generation; this service treats the key as opaque and does not verify its derivation. The example key corresponds to the standardQuote body; derive the key again when changing input in a manual request.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[!-~]{1,255}$"
+            },
+            "example": "32fafb2a-70b4-5114-9f2d-52be7286eaf5"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "VendorApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "api-key",
+        "description": "Must match the private key loaded from apiKeyFile in the selected JSON profile. Relative paths resolve against the profile directory; absolute mount paths are accepted. Surrounding whitespace is trimmed; missing or empty files fail startup. No environment-variable or fallback key. Do not store the key value in JSON, frontend, examples, or logs."
+      }
+    },
+    "schemas": {
+      "QuoteRequest": {
+        "type": "object",
+        "required": [
+          "loanAmount",
+          "loanTermInMonths",
+          "riskBand"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "loanAmount": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^([4-9][0-9]{3}|[1-9][0-9]{4,6}|10000000)$",
+            "description": "Exact decimal string for whole AUD dollars, 4000 through 10000000 inclusive. No sign, leading zeroes, decimal point, or exponent notation."
+          },
+          "loanTermInMonths": {
+            "type": "integer",
+            "minimum": 12,
+            "maximum": 360,
+            "description": "Integer months, 12 through 360 inclusive."
+          },
+          "riskBand": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "description": "Case-sensitive, already-assessed risk band. Empty, padded, or differently cased labels are invalid. The mock does not calculate creditworthiness."
+          }
+        },
+        "description": "Shared generic input rules for all three tasks. Required fields reject null, booleans, arrays, and objects. Extra fields are ignored. No cross-field product eligibility or risk inference."
+      },
+      "QuoteResponse": {
+        "type": "object",
+        "required": [
+          "quoteId",
+          "commissionRate",
+          "totalCommission"
+        ],
+        "properties": {
+          "quoteId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Opaque identifier generated on the first success for a key and unchanged on replay; no UUID or other format is promised."
+          },
+          "commissionRate": {
+            "type": "string",
+            "format": "decimal",
+            "enum": [
+              "0.01",
+              "0.02",
+              "0.03"
+            ],
+            "description": "Exact decimal fraction string; \"0.02\" means 2%."
+          },
+          "totalCommission": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$",
+            "description": "Exact AUD decimal string with at most two decimal places, without exponent notation. Trailing zeroes need not be preserved."
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "INVALID_REQUEST",
+                  "UNAUTHORIZED",
+                  "TOO_MANY_REQUESTS",
+                  "INTERNAL_ERROR",
+                  "VENDOR_UNAVAILABLE",
+                  "IDEMPOTENCY_CONFLICT"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Safe explanation. Never include credentials, stack traces, or internal connection details."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-mock-configuration": {
+    "workingDirectory": "test/mock/quotevendor/",
+    "loading": "Select one file with the standard -config flag, defaulting to config/dev.json; use -config config/ci.json for CI. Selected config paths are relative to the mock service working directory; relative apiKeyFile paths resolve against the selected config directory. Read only the selected file once at startup; no profile merging. Restart the service after changes. All runtime settings, including port, come from the selected file; no environment-variable overrides. Failure simulation follows authentication, validation, and idempotency conflict checks; successful replays bypass it.",
+    "modes": {
+      "random": "Require failureRate as a number from 0 through 1. Missing, null, wrong-type, and out-of-range rates fail startup; zero is valid. Amount triggers are disabled. Use 0 for deterministic success and 1 for deterministic 503 responses.",
+      "loanAmount": "failureRate is optional and completely ignored if present; do not decode or validate its value. Apply only the two exact amount triggers; other valid amounts succeed. No random failure simulation."
+    },
+    "amountTriggers": [
+      {
+        "loanAmount": "100400",
+        "status": 400,
+        "code": "INVALID_REQUEST"
+      },
+      {
+        "loanAmount": "100429",
+        "status": 429,
+        "code": "TOO_MANY_REQUESTS"
+      }
+    ],
+    "matching": "Only exact integer amounts 100400 and 100429 trigger errors; unlisted amounts such as 100430 and 100500 do not.",
+    "startupErrors": "Missing or invalid port, unreadable/malformed config, missing or unsupported failureMode, missing apiKeyFile, or unreadable/empty API key file fail startup. In random mode only, missing, null, wrong-type, or out-of-range failureRate also fails startup. In loanAmount mode, failureRate is ignored. The configuration must still be valid JSON in either mode.",
+    "examples": {
+      "random": {
+        "failureMode": "random",
+        "failureRate": 0.1,
+        "apiKeyFile": "../../data/API_KEY",
+        "port": 8090
+      },
+      "loanAmount": {
+        "failureMode": "loanAmount",
+        "apiKeyFile": "../../data/API_KEY",
+        "port": 8090
+      }
+    },
+    "files": {
+      "dev": "test/mock/quotevendor/config/dev.json",
+      "ci": "test/mock/quotevendor/config/ci.json"
+    },
+    "selection": {
+      "flag": "-config",
+      "default": "config/dev.json",
+      "ci": "config/ci.json"
+    },
+    "profiles": {
+      "dev": {
+        "failureMode": "loanAmount",
+        "apiKeyFile": "../../data/API_KEY",
+        "port": 8090
+      },
+      "ci": {
+        "failureMode": "random",
+        "failureRate": 0.1,
+        "apiKeyFile": "../../data/API_KEY",
+        "port": 8090
+      }
+    },
+    "testing": "The CI profile uses random rate 0.1 for simulation. Automated outcome tests use controlled temporary configs with rates 0/1 or loanAmount mode, not probabilistic assertions.",
+    "apiKeyFile": {
+      "required": true,
+      "pathResolution": "Relative to the selected profile directory, or an absolute path.",
+      "localReference": "../../data/API_KEY",
+      "loading": "Read once at startup; trim surrounding whitespace; missing, unreadable, or empty key files stop startup. Restart after rotation.",
+      "provisioning": "Local file test/mock/data/API_KEY is ignored by Git. In production the deployment platform mounts the secret-manager value before startup. The application only reads the mounted file; it does not connect to a secret manager."
+    },
+    "port": {
+      "required": true,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "profiles": 8090,
+      "source": "Selected JSON profile only; the service listens on localhost. No environment-variable override."
+    }
+  },
+  "x-idempotency": {
+    "header": "idempotency-key",
+    "identity": "Validated loanAmount in whole AUD dollars, loanTermInMonths as an integer, and riskBand. Compare validated field values, not raw JSON. Field order, whitespace, and ignored extra fields do not change identity.",
+    "binding": "After authentication and header/body validation, bind a new key to input. Retain that binding even after failures. Different valid input under a bound key returns 409 with IDEMPOTENCY_CONFLICT. Invalid authentication/header/body creates no binding.",
+    "replay": "Store only successful 200 responses before sending. Same key and input replay the same quoteId, commissionRate, and totalCommission without simulation or recalculation. Failed responses are not stored; retrying the same input runs failure simulation again.",
+    "concurrency": "Key check/binding, failure simulation/calculation, and successful-result storage are atomic; concurrent duplicates must not create multiple successful quotes. A standard mutex around the in-memory map is sufficient.",
+    "retention": "One mock-process lifetime. Restart clears state. No TTL, durable storage, or cross-instance guarantee; local demo only.",
+    "caller": "Frontend deterministically generates UUIDv5 from validated loanAmount|loanTermInMonths|riskBand using the fixed namespace below. Identical input uses the same key on retries, after success, and across page reloads or browser sessions. Changing any field changes the key. No key storage or automatic retries. Application validates and forwards the opaque key unchanged; neither HTTP service recomputes the UUID.",
+    "generation": {
+      "algorithm": "UUIDv5 (RFC 9562 section 5.5)",
+      "namespace": "eae5612f-0c86-500d-ab8a-3f9eb483991f",
+      "namespaceDerivation": "UUIDv5(DNS namespace, \"commissionquote\")",
+      "name": "{loanAmount}|{loanTermInMonths}|{riskBand}",
+      "encoding": "UTF-8; validated integers in ordinary decimal form, exact lowercase risk band, no spaces. No timestamp or random component.",
+      "output": "Lowercase hyphenated UUID",
+      "example": {
+        "loanAmount": "10000",
+        "loanTermInMonths": 36,
+        "riskBand": "medium",
+        "name": "10000|36|medium",
+        "idempotencyKey": "32fafb2a-70b4-5114-9f2d-52be7286eaf5"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "host": "localhost",
+  "port": 8080,
+  "apiKeyFile": "../test/mock/data/API_KEY",
+  "dependencies": {
+    "commissionquote": {
+      "baseUrl": "http://localhost:8090"
+    }
+  }
+}

@@ -7,12 +7,14 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:integration": "node scripts/check-dev.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "decimal.js": "^10.6.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

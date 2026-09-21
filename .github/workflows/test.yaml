@@ -1,0 +1,46 @@
+name: Test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            test/mock/quotevendor/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/package.json
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Test and build the backend
+        run: |
+          make server test
+          make server build
+      - name: Test the mock vendor
+        working-directory: test/mock/quotevendor
+        run: go test -race ./...
+      - name: Build the mock vendor
+        run: make quote build
+      - name: Install frontend dependencies
+        run: npm --prefix web ci
+      - name: Build the frontend
+        run: make web build
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Test the frontend
+        run: make web test

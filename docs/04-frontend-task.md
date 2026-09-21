@@ -27,7 +27,7 @@ Exercise the real UI and fetch lifecycle using controlled/intercepted Web API re
 
 | Check | Pass condition |
 | --- | --- |
-| Shared validation cases | Invalid forms send nothing; valid requests contain integer amount/term and the selected risk |
+| Shared validation cases | Invalid forms send nothing; valid requests contain a decimal-string amount, integer term, and the selected risk |
 | Quote display | Shared success examples format correctly without recalculation |
 | Idempotency | Match the shared UUIDv5 example; changing any field changes the key; unchanged input retains it after errors, success, or reload |
 | Delayed response and repeat click | Loading remains visible and only one request is sent |
@@ -37,18 +37,6 @@ Exercise the real UI and fetch lifecycle using controlled/intercepted Web API re
 | Accessibility/layout | Keyboard flow, labels, focus, announcements, and narrow viewport remain usable |
 
 **Done:** these checks, the production build, and the [common acceptance and handoff](01-development-approach.md#common-acceptance-and-handoff) pass without A or B. Include reproducible interception/mock setup and browser steps in the handoff.
-
-## Commands
-
-After implementation, run from `web/`:
-
-```sh
-npm install
-npm run build
-npm run dev
-```
-
-Commit the lockfile so clean installs can use `npm ci`.
 
 ## Implementation and handoff
 
@@ -80,11 +68,13 @@ The root Makefile also provides these commands (GNU Make and `lsof` required):
 | `make web dev` | Start only the frontend in the foreground; Ctrl+C stops it |
 | `make web build` | Type-check and build the frontend |
 | `make web test` | Run the browser acceptance suite; install Chromium as described below on first use |
-| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, and `web/playwright-report` |
+| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, `web/playwright-report`, root and mock-service `bin/` and `gen/`, and legacy root `app`, `coverage.out`, and `coverage.html` |
 
 The web commands install locked dependencies automatically when missing or when the manifests change. Cleanup preserves source files, the lockfile, other worktrees, and shared npm/Playwright caches.
 
 Open `http://localhost:5173`. Vite proxies `/api` to `http://localhost:8080`; normal manual quote generation needs the application backend there. The frontend needs no environment variables or credentials. Web Crypto requires localhost or HTTPS.
+
+For the complete real-service flow, run `make dev up` from the repository root. This launches the quote mock, application, and frontend; both Go services use their dev JSON profiles. `npm --prefix web run test:integration` checks the live stack; see the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app) for the successful 10000/36/medium example and verified results.
 
 ### Independent acceptance
 
@@ -110,7 +100,7 @@ For an interactive reproduction, run `npm test -- --debug --grep "submits typed 
 | Accessibility | Associated labels, focus outline/order, keyboard submission, invalid-field focus, and status/alert regions verified; actual screen-reader speech was not tested |
 | Build/install | `npm ci` and `npm run build` passed |
 
-Browser plugin was not available; verification used Playwright Chromium. Real-service integration, other browser engines, and screen-reader testing remain outside this independent handoff. No backend code was changed or tested.
+This frontend handoff used Playwright Chromium with intercepted API responses. Real-service integration, other browser engines, and screen-reader testing remain outside this independent handoff. Backend implementation and verification are recorded in [Task B](03-application-backend-task.md).
 
 ### AI Usage
 

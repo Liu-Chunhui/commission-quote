@@ -1,0 +1,58 @@
+name: commission-quote-ci
+
+services:
+  quotevendor:
+    build: ./mock/quotevendor
+    command: ["--config", "/app/quotevendor/config/config.json"]
+    configs:
+      - source: quotevendor_config
+        target: /app/quotevendor/config/config.json
+    secrets:
+      - source: api_key
+        target: /app/data/API_KEY
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8090/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  server:
+    build: ..
+    command: ["--config", "/app/confg/config.json"]
+    configs:
+      - source: server_config
+        target: /app/confg/config.json
+    secrets:
+      - source: api_key
+        target: /app/test/mock/data/API_KEY
+    depends_on:
+      quotevendor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: ../web
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+configs:
+  server_config:
+    file: ${SERVER_CONFIG:-../confg/ci.json}
+  quotevendor_config:
+    file: ${QUOTEVENDOR_CONFIG:-./mock/quotevendor/config/ci.json}
+
+secrets:
+  api_key:
+    file: ./mock/data/API_KEY

@@ -1,5 +1,0 @@
-{
-  "port": 8090,
-  "apiKeyFile": "../../data/API_KEY",
-  "failureMode": "loanAmount"
-}

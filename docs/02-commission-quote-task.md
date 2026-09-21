@@ -1,10 +1,10 @@
-# Task A: Mock Quote Service
+# Task A: Mock Quote Vendor
 
-Implement the independent vendor service. Read the [shared contract and acceptance rules](01-development-approach.md) and [Vendor OpenAPI](../test/mock/commissionquote/api/commissionquote.openapi.json); this document adds only Task A context.
+Implement the independent vendor service. Read the [shared contract and acceptance rules](01-development-approach.md) and [Vendor OpenAPI](../test/mock/quotevendor/api/commissionquote.openapi.json); this document adds only Task A context.
 
 ## Scope
 
-Own `test/mock/commissionquote/`. Initialize its `commissionquote/mock` Go module only if missing. Do not import application packages or implement the application's client/UI.
+Own `test/mock/quotevendor/`. Initialize its `quotevendor` Go module only if missing. Do not import application packages or implement the application's client/UI.
 
 ## Implementation context
 
@@ -32,25 +32,29 @@ Exercise the real HTTP handler directly; use the shared validation cases and the
 
 ## Commands
 
-Run this independent module's checks from `test/mock/commissionquote/` after implementation; root Go tests do not include it. Functional tests are required, but the mock service has no high-coverage target. Provision the private key file referenced by the profile before startup:
+Use Go 1.24 or newer for this independent module. Run its checks from `test/mock/quotevendor/`; root Go tests do not include it. Functional tests are required, but the mock service has no high-coverage target. Provision the private key file referenced by the profile before startup:
 
 ```sh
 gofmt -w cmd internal/app internal/httpapi internal/config
 go test -race ./...
-go build -o /tmp/commissionquote-vendor ./cmd
+go build -o /tmp/quotevendor ./cmd
 go run ./cmd -config config/dev.json
 ```
 
 Use `-config config/ci.json` to select the CI profile.
 
+From the repository root, `make quote dev` starts the service with the dev profile and `make quote build` writes `test/mock/quotevendor/bin/quote`. Run the built executable from the mock module directory so the default profile resolves correctly. `make clean` also removes this service's `bin/` and `gen/` directories. There is no `make quote test`; run the Go tests from the mock module as shown above.
+
+`make dev up` starts all three components using the existing shared key referenced by the dev profiles. See the [combined startup instructions](../test/mock/quotevendor/README.md#start-the-complete-app).
+
 ## Task A handoff — 2026-09-21
 
-The independent service is implemented. Startup and manual HTTP steps are in [README](../test/mock/commissionquote/README.md#run). The supplied specification was moved unchanged from `test/commissionquote/api/commissionquote.openapi.json` to the service-owned path linked above.
+The independent service is implemented. Startup and manual HTTP steps are in [README](../test/mock/quotevendor/README.md#run-the-mock-separately); its standalone specification is `test/mock/quotevendor/api/commissionquote.openapi.json`.
 
 | Reproducible check | Expected | Actual |
 | --- | --- | --- |
 | `go test -race ./...` | Configuration, all risk bands, validation, authentication, sequential/concurrent replay, conflicts, key lifecycle, failure modes, health, and request-log tests pass | Passed |
-| `go vet ./...`; `go build -o /tmp/commissionquote-vendor ./cmd` | No diagnostics; executable builds | Passed |
+| `go vet ./...`; `go build -o /tmp/quotevendor ./cmd` | No diagnostics; executable builds | Passed |
 | Default startup; explicit dev/CI and temporary random 0/1 profiles | Correct profile behavior; unauthenticated health remains 200 `ok` | Passed through live HTTP; CI outcome was not asserted probabilistically |
 | 10000/36/medium; repeat; 24 concurrent duplicates | 0.02 and 200; identical quote for each reused key | Passed through live HTTP |
 | Changed term under an existing key; restart and repeat original request | 409 before simulation; restart generates a new quote ID | Passed through live HTTP |

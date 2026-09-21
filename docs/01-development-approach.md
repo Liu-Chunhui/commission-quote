@@ -2,7 +2,7 @@
 
 Read this document first, then your task: [A: commission quote](02-commission-quote-task.md), [B: Application Backend](03-application-backend-task.md), or [C: Frontend](04-frontend-task.md). Shared decisions live here; task documents contain only their own scope, implementation context, and acceptance cases. Coding rules live in [AGENTS.md](../AGENTS.md).
 
-These documents define requirements, not completed implementation. Inspect existing files before creating them.
+This document defines shared requirements. Each task document records its implementation and verified handoff separately; passing independent task checks does not establish end-to-end integration. Inspect existing files before creating them.
 
 ## Development plan
 
@@ -15,7 +15,7 @@ Define the APIs and task boundaries first, develop the three parts in parallel, 
 | 2:30–3:20 | Connect the three components | End-to-end success and failure flows work |
 | 3:20–4:00 | Fix defects, review coverage, and finish handoff | Checks and run instructions are reproducible |
 
-Use Go for both services and React with TypeScript for the UI. Services use separate Go modules and communicate only over HTTP; no shared Go package or Go workspace. The integration owner maintains the root `commissionquote` module, shared documents/configuration, and the final `test/mock/commissionquote/README.md`. Coordinate contract changes through that owner.
+Use Go for both services and React with TypeScript for the UI. Services use separate Go modules and communicate only over HTTP; no shared Go package or Go workspace. The integration owner maintains the root `commissionquote` module, shared documents/configuration, and the final `test/mock/quotevendor/README.md`. Coordinate contract changes through that owner.
 
 The challenge requires the form, quote results, vendor API-key protection, occasional random failures, error handling, tests, and setup/AI-usage notes. The stack, routes, numeric limits, formula, idempotency, and error mappings below are project decisions. No database, staff login, quote history, automatic retries, or deployment infrastructure is required. The mock's in-memory idempotency state is the only quote cache.
 
@@ -29,19 +29,19 @@ The challenge requires the form, quote results, vendor API-key protection, occas
 The browser calls only the application. The application validates input, forwards the key, calls the vendor, and returns the quote or the generic public failure response. The vendor authenticates before validating input. Keep its API key out of browser code, requests, and logs.
 
 - [Web API specification](../api/webapi.openapi.json): browser-facing contract for B and C.
-- [Vendor specification](../test/mock/commissionquote/api/commissionquote.openapi.json): vendor contract for A and B.
+- [Vendor specification](../test/mock/quotevendor/api/commissionquote.openapi.json): vendor contract for A and B.
 
 The vendor's `QuoteRequest` schema is the shared field definition. Keep both specifications' request/quote schemas and UUIDv5 definition identical. Each specification remains self-contained; exact response messages and full JSON examples belong there.
 
 ### Health checks
 
-Every microservice exposes `GET /health`, registered with its health handler; commission quote routing lives in `internal/app/router.go`. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
+Every microservice exposes `GET /health`, registered in its own `internal/app/router.go` with the handler in `internal/httpapi/health.go`. Return HTTP 200 with `Content-Type: text/plain; charset=utf-8` and body `ok`. No request body, API key, or idempotency key is required. This is a local liveness check: do not call downstream services or apply quote validation, idempotency, or simulated failures. Each service's independent acceptance must verify this endpoint without credentials, including when its quote dependency is unavailable or mock failures are enabled.
 
 ## Request validation contract
 
 ```json
 {
-  "loanAmount": 10000,
+  "loanAmount": "10000",
   "loanTermInMonths": 36,
   "riskBand": "medium"
 }
@@ -49,11 +49,11 @@ Every microservice exposes `GET /health`, registered with its health handler; co
 
 | Field | Rule |
 | --- | --- |
-| `loanAmount` | Required integer, AUD 4000–10000000 inclusive |
+| `loanAmount` | Required decimal string for whole AUD dollars, 4000–10000000 inclusive |
 | `loanTermInMonths` | Required integer, 12–360 months inclusive |
 | `riskBand` | Required string: exactly `low`, `medium`, or `high` |
 
-Require one JSON object. Reject missing/null fields, wrong types, numeric strings, fractional amounts/terms, out-of-range values, malformed JSON, and trailing JSON values. Ignore extra fields. Do not round, clamp, normalize risk labels, infer risk, or supply defaults. Apply one generic rule set without loan categories or cross-field eligibility rules.
+Require one JSON object. Reject missing/null fields, wrong types (including JSON numbers for money and strings for the term), fractional amounts/terms, out-of-range values, malformed JSON, and trailing JSON values. Ignore extra fields. Do not round, clamp, normalize risk labels, infer risk, or supply defaults. Apply one generic rule set without loan categories or cross-field eligibility rules.
 
 Each service validates at its HTTP boundary; internal code uses the validated values. Frontend validation provides usability and does not replace server validation. Invalid application input must not call the vendor.
 
@@ -61,7 +61,7 @@ Each service validates at its HTTP boundary; internal code uses the validated va
 
 | Field | Accept | Reject |
 | --- | --- | --- |
-| `loanAmount` | `4000`, `10000`, `10000000` | `3999`, `10000001`, `4000.5` |
+| `loanAmount` | `"4000"`, `"10000"`, `"10000000"` | `4000`, `"3999"`, `"10000001"`, `"4000.5"`, `"04000"`, `"4e3"` |
 | `loanTermInMonths` | `12`, `36`, `360` | `11`, `361`, `12.5` |
 | `riskBand` | `low`, `medium`, `high` | Empty or unsupported values |
 
@@ -72,14 +72,16 @@ Keep other fields valid; also test required fields, wrong types, and invalid bod
 ```json
 {
   "quoteId": "quote-example-standard",
-  "commissionRate": 0.02,
-  "totalCommission": 200
+  "commissionRate": "0.02",
+  "totalCommission": "200"
 }
 ```
 
+Use `shopspring/decimal` in both Go services and `decimal.js` in the frontend for loan amounts, commission rates, and commission totals. JSON carries exact decimal strings; do not convert monetary values through binary floats. Loan amount strings contain canonical whole dollars without signs, leading zeroes, decimal points, or exponents. Commission strings have at most two decimal places and no exponent notation; display two decimal places without converting to JavaScript `number`.
+
 `quoteId` is non-empty and opaque. `commissionRate` is a fraction, so `0.02` means 2%. `totalCommission` is AUD with at most two decimal places. Only the vendor calculates commission or generates quote IDs.
 
-Mock rates: low = 1%, medium = 2%, high = 3%. Calculate integer commission cents as `loanAmount * ratePercent`, then return dollars; no rounding is needed. Term is validated but does not affect this formula. Examples: 10000/medium → 200; 750000/medium → 15000; 4001/low → 40.01.
+Mock rates: low = 1%, medium = 2%, high = 3%. Calculate AUD commission using decimal multiplication: `loanAmount * commissionRate`; no rounding is needed for whole-dollar amounts and these rates. Term is validated but does not affect this formula. Examples: 10000/medium → 200; 750000/medium → 15000; 4001/low → 40.01.
 
 ## Idempotency: both endpoints
 
@@ -119,17 +121,22 @@ The frontend uses one generic failure flow, without vendor-specific status/code 
 
 | Setting | Owner | Default or requirement |
 | --- | --- | --- |
-| `APP_ADDR` | B | `localhost:8080` |
-| `VENDOR_BASE_URL` | B | `http://localhost:8090`; append `/quotes` |
-| `port` | A | Required integer from 1 through 65535; dev/CI use `8090`, listening on localhost |
-| `apiKeyFile` | A and B | JSON configuration references the mounted key file; both processes use the same private value |
+| JSON `host` | A, B | Dev profiles bind to `localhost`; CI profiles bind to `0.0.0.0` for container networking |
+| Application JSON `port` | B | Integer from 1 through 65535; both `confg/dev.json` and `confg/ci.json` use 8080 |
+| Application JSON `dependencies.commissionquote.baseUrl` | B | Required absolute HTTP(S) base URL; dev uses `http://localhost:8090`, CI uses Compose DNS `http://quotevendor:8090`; the client appends `/quotes` |
+| Mock JSON `port` | A | Integer from 1 through 65535; both mock profiles use 8090; no `VENDOR_ADDR` override |
+| Application JSON `apiKeyFile` | B | Required key file; both profiles use `../test/mock/data/API_KEY`, sharing the mock service's private key |
 
-The frontend runs on port 5173 and proxies `/api` to the application. Configuration profiles belong only to A:
+The application loads the file selected by `--config`, defaulting to `confg/dev.json` relative to the working directory. Missing/unreadable files, malformed JSON, and missing/invalid ports or base URLs stop startup. Base URLs must not contain credentials, query strings, or fragments. The file is the source of the application port and downstream base URL; `APP_ADDR` and `VENDOR_BASE_URL` are not used.
+
+The application resolves relative `apiKeyFile` paths against the selected profile directory and supports absolute mount paths. It loads the key into `Config.APIKey`, trims surrounding whitespace, and rejects missing, unreadable, or empty key files. Credentials are not read from JSON values or environment variables, included in serialized configuration, or logged.
+
+The dev frontend runs on port 5173 and proxies `/api` through Vite. In CI, Nginx serves the built frontend on host port 8088 and proxies `/api` to `server:8080`; only this web port is published, bound to host loopback. Mock failure profiles belong only to A:
 
 | Profile | Failure behavior |
 | --- | --- |
-| [config/dev.json](../test/mock/commissionquote/config/dev.json) | `loanAmount`: exact amount 100400 → 400; 100429 → 429; all others succeed |
-| [config/ci.json](../test/mock/commissionquote/config/ci.json) | `random`: 503 with `failureRate: 0.1`; otherwise success; amount triggers disabled |
+| [config/dev.json](../test/mock/quotevendor/config/dev.json) | `loanAmount`: exact amount 100400 → 400; 100429 → 429; all others succeed |
+| [config/ci.json](../test/mock/quotevendor/config/ci.json) | `random`: 503 with `failureRate: 0.1`; otherwise success; amount triggers disabled |
 
 All commission quote runtime settings come from the selected JSON profile; there are no environment-variable overrides. Both profiles reference `../../data/API_KEY` using `apiKeyFile`, resolved relative to the selected profile directory. Absolute file paths are supported for production mounts. Keep the local `test/mock/data/API_KEY` out of Git. The deployment platform supplies the secret-manager value as a file before startup; the service reads it once, trims surrounding whitespace, and rejects a missing or empty key. It does not read an `API_KEY` environment variable or contact a secret manager. Restart after key rotation.
 
@@ -143,10 +150,12 @@ All tasks must build, satisfy their API contract, and provide reproducible comma
 
 ## Final integration
 
+Development integration has been verified for successful quotes, replay after reload, both dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
+
 After independent acceptance and merging:
 
 1. Start all components with the shared configuration. Use dev mode and an ordinary amount for success; verify browser key secrecy and invalid-input handling.
 2. Repeat unchanged input after success/reload: same key and quote. To test conflicts, manually reuse the old key with changed input: the quote service returns 409 internally and the Web API returns generic 500. The UI normally derives a different key.
 3. Exercise both dev trigger amounts and a temporary random config with rate 1. Verify the same generic public failure, UI recovery, and distinct internal causes in logs. Confirm timeout handling with B's slow-vendor test and C's mocked timeout response; no production delay endpoint is needed.
 4. Smoke-check the CI profile, restore dev for local work, run both Go suites and the frontend build, and record browser checks and coverage.
-5. Finish `test/mock/commissionquote/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.
+5. Finish `test/mock/quotevendor/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.

@@ -2,6 +2,10 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+/bin/
+/gen/
+/test/mock/quotevendor/bin/
+/test/mock/quotevendor/gen/
 *.exe
 *.exe~
 *.dll
@@ -30,6 +34,3 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-
-# Local mock credential; production mounts this from a secret manager.
-/test/mock/data/API_KEY
