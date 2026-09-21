@@ -12,7 +12,7 @@ make ci up
 
 Open **http://localhost:8088**. Compose builds all three images, waits for healthy quotevendor → server → web startup, and keeps the containers running in the background. Compose mounts each Go service's JSON profile read-only and passes its path through `--config`; Dockerfiles contain no configuration files. Profiles default to `ci.json`; select alternatives with `SERVER_CONFIG` and `QUOTEVENDOR_CONFIG` as shown in the [root README](../../../README.md#run-the-web-application). The existing key is supplied through read-only Compose secret mounts. Only Nginx's web port is published, on host loopback; it forwards `/api` to the backend over the Compose network. Go and Node.js run inside build containers, so no local dependency installation is needed for this command.
 
-Use 10000 / 36 / Medium for a 2% rate and AUD 200.00 commission. The CI mock intentionally simulates 503 errors with probability 0.1; the browser shows a generic error and permits a manual retry. Successful quotes replay until the mock restarts. For deterministic checks, select a copy of the mock CI profile with `failureRate` set to 0 (success) or 1 (failure). After editing a mounted profile, reload with `docker compose -f test/compose.yaml up --force-recreate --wait`, including the same configuration-file variables; no image rebuild is needed.
+Use 10000 / 36 / Medium for a 2% rate and AUD 200.00 commission. The CI mock intentionally simulates a failure with probability 0.1, uniformly choosing HTTP 400/401/409/429/500/503; the browser shows a generic error and permits a manual retry. Successful quotes replay until the mock restarts. For deterministic checks, select a copy of the mock CI profile with `failureRate` set to 0 (success) or 1 (failure). After editing a mounted profile, reload with `docker compose -f test/compose.yaml up --force-recreate --wait`, including the same configuration-file variables; no image rebuild is needed.
 
 ```sh
 docker compose -f test/compose.yaml ps
@@ -42,7 +42,7 @@ Open **http://localhost:5173** and enter:
 | --- | --- | --- | --- |
 | 10000 | 36 | Medium | 2% commission, AUD 200.00, and a nonempty quote ID |
 
-Click **Generate Quote**. The browser sends `POST /api/quotes` through Vite to the application; the application calls mock `POST /quotes` with its private API key. Repeating unchanged input, including after a page reload, reuses the mock's quote while that process remains running. Amounts 100400 and 100429 exercise the two dev failures and display the same generic error; return to 10000 to recover.
+Click **Generate Quote**. The browser sends `POST /api/quotes` through Vite to the application; the application calls mock `POST /quotes` with its private API key. Repeating unchanged input, including after a page reload, reuses the mock's quote while that process remains running. Amounts 100400, 100401, 100409, 100429, 100500, and 100503 exercise the six dev failures and display the same generic error; return to 10000 to recover.
 
 ## Verify the complete app
 
@@ -53,11 +53,11 @@ npm --prefix web exec -- playwright install chromium
 npm --prefix web run test:integration
 ```
 
-The integration check uses real browser requests through both running services. It verifies the example, replay after reload, both dev failures, recovery, and the absence of the private key header from browser requests. It prints the path to a success screenshot saved in the system temporary directory.
+The integration check uses real browser requests through both running services. It verifies the example, replay after reload, all six dev failures, recovery, and the absence of the private key header from browser requests. It prints the path to a success screenshot saved in the system temporary directory.
 
 For a container check, select a copy of the mock CI profile with `failureMode: "loanAmount"` using `QUOTEVENDOR_CONFIG`, then run `APP_URL=http://localhost:8088 npm --prefix web run test:integration`. This also checks exact decimal-string transmission and the AUD 200.06 result for 10003 / 36 / medium. Restore the default CI profile after testing.
 
-Decimal migration verified on 2026-09-22: both Go suites passed with race detection and vet, production `internal/` files retained 100% statement coverage, all 18 Playwright tests passed, and frontend/container builds passed. The real container browser flow passed success, exact cents, replay, both deterministic failures, and recovery. Precision regressions cover values beyond JavaScript's safe integer range and fractions too small for binary floats to distinguish.
+Decimal migration verified on 2026-09-22: both Go suites passed with race detection and vet, production `internal/` files retained 100% statement coverage, all 22 Playwright tests passed, and frontend/container builds passed. The real container browser flow passed success, exact cents, replay, all six deterministic failures, and recovery. Precision regressions cover values beyond JavaScript's safe integer range and fractions too small for binary floats to distinguish. Random mode was checked with rate 1 across 30 retries: every response matched a documented status/code pair and became a generic application error. Tests do not require a particular random sequence or distribution.
 
 Verified on 2026-09-21: these flows passed in Chromium. The successful quote was also submitted and visibly confirmed in Chrome, with no console errors or warnings. Ctrl+C released ports 8090, 8080, and 5173; the stack restarted successfully. CI/random-mode end-to-end simulation and other browser engines are not covered by this dev check.
 
@@ -90,7 +90,7 @@ The default profile is `config/dev.json`, relative to the working directory. To 
 go run ./cmd -config config/ci.json
 ```
 
-Configuration and the key file are read once; restart after edits or key rotation. Relative `apiKeyFile` paths resolve against the selected JSON file directory, not the shell working directory. Absolute paths are supported. Surrounding whitespace in the key file is trimmed. In production, the deployment platform mounts the value from its secret manager before starting the app; configure `apiKeyFile` to that mounted path. This service reads the file and does not implement secret-manager access or mounting. Development mode returns simulated 400/429 errors for amounts 100400/100429. CI mode returns 503 with probability 0.1, with amount triggers disabled. For deterministic random-mode checks, copy a profile, preserve its port, point `apiKeyFile` to the private file, and set `failureMode: "random"` with `failureRate` set to 0 or 1. Authentication and validation always run first.
+Configuration and the key file are read once; restart after edits or key rotation. Relative `apiKeyFile` paths resolve against the selected JSON file directory, not the shell working directory. Absolute paths are supported. Surrounding whitespace in the key file is trimmed. In production, the deployment platform mounts the value from its secret manager before starting the app; configure `apiKeyFile` to that mounted path. This service reads the file and does not implement secret-manager access or mounting. Development mode uses the `100` prefix plus a documented HTTP error status: 100400/100401/100409/100429/100500/100503 trigger 400/401/409/429/500/503. CI mode fails with probability 0.1, uniformly selecting one of these six errors, with amount triggers disabled. For deterministic random-mode checks, copy a profile, preserve its port, point `apiKeyFile` to the private file, and set `failureMode: "random"` with `failureRate` set to 0 or 1. Authentication and validation always run first.
 
 ## Verify the mock separately
 
@@ -131,7 +131,7 @@ finally:
 PY_QUOTE
 ```
 
-Expected: a nonempty `quoteId`, `commissionRate: "0.02"`, and `totalCommission: "200"`. Repeat unchanged to obtain the same quote. Changing a field under that key returns 409; use a fresh printable key for unrelated manual cases. Restarting clears stored quotes. To verify errors, use missing/wrong authentication (401), amount 3999 (400), and the two dev triggers with fresh keys (400/429).
+Expected: a nonempty `quoteId`, `commissionRate: "0.02"`, and `totalCommission: "200"`. Repeat unchanged to obtain the same quote. Changing a field under that key returns 409; use a fresh printable key for unrelated manual cases. Restarting clears stored quotes. To verify errors, use missing/wrong authentication (401), amount 3999 (400), and all six dev triggers with fresh keys (400/429).
 
 Startup must fail for missing/invalid `port` (integer 1–65535), a missing `apiKeyFile`, unreadable/empty key file, missing/malformed profile, or invalid random-mode rate. `loanAmount` mode accepts any valid JSON value for its ignored rate. JSON logs use UTC timestamps and go to stderr with a distinct request ID per HTTP attempt, start/completion status and timing, quote generation/replay decisions, and one ERROR per detected failure. No API keys or request bodies are logged. Configuration errors use fixed messages; HTTP server startup failures include the underlying error in the `cause` field.
 

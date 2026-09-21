@@ -81,7 +81,7 @@ Run `go test ./internal/httpapi -run TestQuote -count=1 -v` for independent endp
 
 | Input or dependency | Expected and verified result |
 | --- | --- |
-| Valid boundary values, all risk bands, `4001`, and both mock trigger amounts | 200; forward fields/key unchanged and return the supplied quote without recalculation; repeated requests each call the dependency |
+| Valid boundary values, all risk bands, `4001`, and sample mock trigger amounts | 200; forward fields/key unchanged and return the supplied quote without recalculation; repeated requests each call the dependency |
 | Missing/invalid key, wrong content type, malformed/trailing JSON, missing/null/wrong-type fields, invalid ranges or risk labels | 400 `INVALID_REQUEST`; no downstream calls |
 | Documented downstream errors, unknown status/code, malformed or incomplete response, connection failure, redirect | Identical 500 `INTERNAL_ERROR` payload; no retries or credential forwarding to redirects |
 | Delayed headers/body or incoming cancellation | Generic 500; outgoing request canceled |

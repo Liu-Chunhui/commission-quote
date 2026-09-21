@@ -42,7 +42,7 @@ try {
   assert.equal(cents.status, 200);
   assert.equal(cents.body.totalCommission, '200.06');
 
-  for (const amount of ['100400', '100429']) {
+  for (const amount of ['100400', '100401', '100409', '100429', '100500', '100503']) {
     const failure = await submit(amount);
     assert.equal(failure.status, 500);
     assert.deepEqual(failure.body, { error: { code: 'INTERNAL_ERROR', message: 'Unable to generate a quote. Please try again later.' } });
@@ -65,7 +65,7 @@ try {
   const screenshot = join(tmpdir(), 'commission-quote-success.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   console.log('PASS: real browser → web service → quote mock; AUD 10,000 / 36 months / medium → 2%, AUD 200.00.');
-  console.log('PASS: replay after reload, both simulated errors, recovery, and browser credential isolation.');
+  console.log('PASS: exact cents, replay after reload, all six simulated errors, recovery, and browser credential isolation.');
   console.log(`Screenshot: ${screenshot}`);
 } finally {
   await browser.close();

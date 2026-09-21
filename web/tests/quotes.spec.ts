@@ -222,7 +222,7 @@ for (const scenario of ['validation', 'server', 'network', 'invalid JSON', 'inva
   });
 }
 
-for (const amount of ['100400', '100429']) {
+for (const amount of ['100400', '100401', '100409', '100429', '100500', '100503']) {
   test(`submits mock trigger ${amount} normally and shows the generic API failure`, async ({ page }) => {
     let submitted: unknown;
     await page.route(endpoint, route => {

@@ -90,6 +90,31 @@ func TestConcurrentDuplicates(t *testing.T) {
 	}
 }
 
+func TestConflictLogs(t *testing.T) {
+	var output bytes.Buffer
+	var operations []string
+	var record struct{ Level, Operation string }
+
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	defer slog.SetDefault(previous)
+	handler := app.NewRouter(config.Config{APIKey: _testKey, FailureMode: "loanAmount"})
+	body := strings.Replace(_validBody, "10000", "100409", 1)
+	request(t, handler, body, "conflict", _testKey, 409, "IDEMPOTENCY_CONFLICT")
+	request(t, handler, strings.Replace(body, ":36", ":12", 1), "conflict", _testKey, 409, "IDEMPOTENCY_CONFLICT")
+	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatal(err)
+		}
+		if record.Level == "ERROR" {
+			operations = append(operations, record.Operation)
+		}
+	}
+	if len(operations) != 2 || operations[0] != "simulate_failure" || operations[1] != "check_idempotency" {
+		t.Fatalf("conflict log operations = %v", operations)
+	}
+}
+
 func TestDecimalCalculation(t *testing.T) {
 	var quote map[string]string
 
@@ -114,12 +139,16 @@ func TestFailureModes(t *testing.T) {
 		{"bad request", config.Config{FailureMode: "loanAmount"}, 100400, 400, "INVALID_REQUEST"},
 		{"rate limited", config.Config{FailureMode: "loanAmount"}, 100429, 429, "TOO_MANY_REQUESTS"},
 		{"unlisted 430", config.Config{FailureMode: "loanAmount"}, 100430, 200, ""},
-		{"unlisted 500", config.Config{FailureMode: "loanAmount"}, 100500, 200, ""},
+		{"unauthorized", config.Config{FailureMode: "loanAmount"}, 100401, 401, "UNAUTHORIZED"},
+		{"conflict", config.Config{FailureMode: "loanAmount"}, 100409, 409, "IDEMPOTENCY_CONFLICT"},
+		{"internal error", config.Config{FailureMode: "loanAmount"}, 100500, 500, "INTERNAL_ERROR"},
+		{"unavailable", config.Config{FailureMode: "loanAmount"}, 100503, 503, "VENDOR_UNAVAILABLE"},
 		{"random zero ignores 400", config.Config{FailureMode: "random", FailureRate: 0}, 100400, 200, ""},
 		{"random zero ignores 429", config.Config{FailureMode: "random", FailureRate: 0}, 100429, 200, ""},
-		{"random one", config.Config{FailureMode: "random", FailureRate: 1}, 10000, 503, "VENDOR_UNAVAILABLE"},
-		{"random one ignores 400", config.Config{FailureMode: "random", FailureRate: 1}, 100400, 503, "VENDOR_UNAVAILABLE"},
-		{"random one ignores 429", config.Config{FailureMode: "random", FailureRate: 1}, 100429, 503, "VENDOR_UNAVAILABLE"},
+		{"random zero ignores 401", config.Config{FailureMode: "random", FailureRate: 0}, 100401, 200, ""},
+		{"random zero ignores 409", config.Config{FailureMode: "random", FailureRate: 0}, 100409, 200, ""},
+		{"random zero ignores 500", config.Config{FailureMode: "random", FailureRate: 0}, 100500, 200, ""},
+		{"random zero ignores 503", config.Config{FailureMode: "random", FailureRate: 0}, 100503, 200, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.config.APIKey = _testKey
@@ -180,6 +209,34 @@ func TestIdempotencyHeaders(t *testing.T) {
 	for _, key := range []string{"!", "~", strings.Repeat("a", 255)} {
 		request(t, handler, _validBody, key, _testKey, 200, "")
 	}
+}
+
+func TestRandomFailures(t *testing.T) {
+	var payload struct {
+		Error struct{ Code, Message string }
+	}
+
+	codes := map[int]string{400: "INVALID_REQUEST", 401: "UNAUTHORIZED", 409: "IDEMPOTENCY_CONFLICT", 429: "TOO_MANY_REQUESTS", 500: "INTERNAL_ERROR", 503: "VENDOR_UNAVAILABLE"}
+	handler := app.NewRouter(config.Config{APIKey: _testKey, FailureMode: "random", FailureRate: 1})
+	// Assert the contract for every draw, never a particular random sequence or distribution.
+	for range 30 {
+		req := httptest.NewRequest(http.MethodPost, "/quotes", strings.NewReader(_validBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("api-key", _testKey)
+		req.Header.Set("idempotency-key", "random-retry")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		code, valid := codes[response.Code]
+		if !valid || payload.Error.Code != code || payload.Error.Message == "" {
+			t.Fatalf("random failure does not match contract: %d %s", response.Code, response.Body.String())
+		}
+	}
+	request(t, handler, _validBody, "unauthorized", "wrong-test-key", 401, "UNAUTHORIZED")
+	request(t, handler, `{}`, "invalid", _testKey, 400, "INVALID_REQUEST")
+	request(t, handler, strings.Replace(_validBody, ":36", ":12", 1), "random-retry", _testKey, 409, "IDEMPOTENCY_CONFLICT")
 }
 
 func TestRequestLogs(t *testing.T) {

@@ -59,11 +59,15 @@ Use a valid term such as 36 months and risk band `medium`:
 
 | Loan amount (AUD) | Mock API result |
 | --- | --- |
-| 100400 | HTTP 400 — simulated bad request |
-| 100429 | HTTP 429 — simulated too many requests |
+| 100400 | HTTP 400 — INVALID_REQUEST |
+| 100401 | HTTP 401 — UNAUTHORIZED |
+| 100409 | HTTP 409 — IDEMPOTENCY_CONFLICT |
+| 100429 | HTTP 429 — TOO_MANY_REQUESTS |
+| 100500 | HTTP 500 — INTERNAL_ERROR |
+| 100503 | HTTP 503 — VENDOR_UNAVAILABLE |
 | Any other valid amount, such as 10000 | Successful quote |
 
-This mode provides repeatable manual checks. It ignores `failureRate`, even if that field is present.
+The amount is the prefix `100` followed by a documented HTTP error status, e.g. `100401`. This mode provides repeatable manual checks. It ignores `failureRate`, even if that field is present.
 
 ### Trigger errors randomly
 
@@ -74,7 +78,7 @@ Set these fields in the selected profile:
 "failureRate": 0.1
 ```
 
-Each valid request that is not a successful idempotency replay has a 10% chance of returning HTTP 503. This is a probability, not a guarantee of one failure every ten requests. Loan-amount triggers are disabled in this mode. `failureRate` must be a number from 0 to 1: use 0 to disable simulated failures or 1 to make every eligible request fail.
+Each valid request that is not a successful idempotency replay has a 10% chance of a simulated failure. Each failure uniformly selects one of HTTP 400, 401, 409, 429, 500, or 503 with its matching contract error code. This is a probability, not a guarantee of one failure every ten requests. Loan-amount triggers are disabled in this mode. `failureRate` must be a number from 0 to 1: use 0 to disable simulated failures or 1 to make every eligible request fail.
 
 Successful quotes are replayed without another random check. To try another random outcome after success, change the amount, term, or risk band to generate a new idempotency key. Failed requests can be retried with the same input.
 

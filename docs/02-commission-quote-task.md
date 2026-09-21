@@ -23,7 +23,7 @@ Exercise the real HTTP handler directly; use the shared validation cases and the
 | Authentication, including replay | Missing/wrong API key is rejected before validation/simulation |
 | Idempotency | Sequential/concurrent duplicates, including reordered JSON fields, return one quote; changed amount/term/risk under the bound key conflicts, even after failure |
 | Key lifecycle | Invalid input reserves no key; failed responses can be retried; different caller-supplied keys create separate quotes; restart clears stored results |
-| Failure profiles | Both profiles match shared behavior; random rates 0/1 are deterministic; trigger amounts have no special meaning in random mode; unlisted amounts succeed in loanAmount mode |
+| Failure profiles | Both profiles match shared behavior; random rate 0 always succeeds and rate 1 always returns one of the six documented errors; assert status/code membership, not a random sequence or distribution; trigger amounts have no special meaning in random mode; unlisted amounts succeed in loanAmount mode |
 | Precedence | Invalid authentication, input, or key reuse wins over failure simulation |
 | Configuration | Default/explicit file selection works; invalid startup settings fail; loanAmount mode accepts omitted, null, string, or out-of-range rate values |
 | Invalid idempotency headers | Missing or invalid headers match the vendor specification |

@@ -15,6 +15,15 @@ import (
 )
 
 var _loanAmountPattern = regexp.MustCompile(`^[1-9][0-9]{3,7}$`)
+var errIdempotencyConflict = &responseError{http.StatusConflict, "IDEMPOTENCY_CONFLICT", "This request key was already used with different loan details. Submit a new quote."}
+var _simulatedErrors = []responseError{
+	{http.StatusBadRequest, "INVALID_REQUEST", "Simulated vendor bad request."},
+	{http.StatusUnauthorized, "UNAUTHORIZED", "A valid API key is required."},
+	*errIdempotencyConflict,
+	{http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Too many quote requests. Please try again later."},
+	{http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to generate a quote."},
+	{http.StatusServiceUnavailable, "VENDOR_UNAVAILABLE", "The quote provider is temporarily unavailable."},
+}
 
 type quoteRequest struct {
 	LoanAmount       decimal.Decimal
@@ -49,7 +58,7 @@ func (s *Handler) Quote(w http.ResponseWriter, r *http.Request) {
 	quote, err := s.generate(r.Context(), input, key)
 	if err != nil {
 		operation := "simulate_failure"
-		if err.status == http.StatusConflict {
+		if err == errIdempotencyConflict {
 			operation = "check_idempotency"
 		}
 		writeError(w, r, operation, err)
@@ -66,7 +75,7 @@ func (s *Handler) generate(ctx context.Context, input quoteRequest, key string) 
 
 	stored, exists := s.quotes[key]
 	if exists && (!stored.input.LoanAmount.Equal(input.LoanAmount) || stored.input.LoanTermInMonths != input.LoanTermInMonths || stored.input.RiskBand != input.RiskBand) {
-		return quoteResponse{}, &responseError{http.StatusConflict, "IDEMPOTENCY_CONFLICT", "This request key was already used with different loan details. Submit a new quote."}
+		return quoteResponse{}, errIdempotencyConflict
 	}
 
 	if stored.quote.QuoteID != "" {
@@ -76,14 +85,13 @@ func (s *Handler) generate(ctx context.Context, input quoteRequest, key string) 
 
 	s.quotes[key] = storedQuote{input: input}
 	if s.config.FailureMode == "loanAmount" {
-		switch {
-		case input.LoanAmount.Equal(decimal.NewFromInt(100400)):
-			return quoteResponse{}, &responseError{http.StatusBadRequest, "INVALID_REQUEST", "Simulated vendor bad request."}
-		case input.LoanAmount.Equal(decimal.NewFromInt(100429)):
-			return quoteResponse{}, &responseError{http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Too many quote requests. Please try again later."}
+		for i := range _simulatedErrors {
+			if input.LoanAmount.Equal(decimal.NewFromInt(100000 + int64(_simulatedErrors[i].status))) {
+				return quoteResponse{}, &_simulatedErrors[i]
+			}
 		}
 	} else if mathrand.Float64() < s.config.FailureRate {
-		return quoteResponse{}, &responseError{http.StatusServiceUnavailable, "VENDOR_UNAVAILABLE", "The quote provider is temporarily unavailable."}
+		return quoteResponse{}, &_simulatedErrors[mathrand.IntN(len(_simulatedErrors))]
 	}
 
 	rate := decimal.New(1, -2)

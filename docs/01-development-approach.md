@@ -135,12 +135,12 @@ The dev frontend runs on port 5173 and proxies `/api` through Vite. In CI, Nginx
 
 | Profile | Failure behavior |
 | --- | --- |
-| [config/dev.json](../test/mock/quotevendor/config/dev.json) | `loanAmount`: exact amount 100400 → 400; 100429 → 429; all others succeed |
-| [config/ci.json](../test/mock/quotevendor/config/ci.json) | `random`: 503 with `failureRate: 0.1`; otherwise success; amount triggers disabled |
+| [config/dev.json](../test/mock/quotevendor/config/dev.json) | `loanAmount`: prefix `100` + HTTP status; 100400/100401/100409/100429/100500/100503 → 400/401/409/429/500/503; all others succeed |
+| [config/ci.json](../test/mock/quotevendor/config/ci.json) | `random`: fail with probability `failureRate: 0.1`, selecting uniformly from 400/401/409/429/500/503; otherwise success; amount triggers disabled |
 
 All commission quote runtime settings come from the selected JSON profile; there are no environment-variable overrides. Both profiles reference `../../data/API_KEY` using `apiKeyFile`, resolved relative to the selected profile directory. Absolute file paths are supported for production mounts. Keep the local `test/mock/data/API_KEY` out of Git. The deployment platform supplies the secret-manager value as a file before startup; the service reads it once, trims surrounding whitespace, and rejects a missing or empty key. It does not read an `API_KEY` environment variable or contact a secret manager. Restart after key rotation.
 
-Modes are mutually exclusive and run after authentication, validation, and idempotency checks. Successful replays bypass simulation. Random mode requires a numeric rate from 0 through 1; loanAmount mode ignores the rate entirely, including its type/range. No real rate limiter is required. Both trigger amounts are valid inputs.
+Modes are mutually exclusive and run after authentication, validation, and idempotency checks. Successful replays bypass simulation. Random mode requires a numeric rate from 0 through 1; loanAmount mode ignores the rate entirely, including its type/range. No real rate limiter is required. All six trigger amounts are valid decimal-string inputs. Simulated 401/409 responses do not bypass actual authentication or idempotency checks.
 
 ## Common acceptance and handoff
 
@@ -150,12 +150,12 @@ All tasks must build, satisfy their API contract, and provide reproducible comma
 
 ## Final integration
 
-Development integration has been verified for successful quotes, replay after reload, both dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
+Development integration has been verified for successful quotes, replay after reload, the dev trigger failures, recovery, and browser credential isolation. Reproduction steps and remaining verification limits are in the [combined README](../test/mock/quotevendor/README.md#verify-the-complete-app). The checklist below also includes CI/random-mode checks beyond that dev verification.
 
 After independent acceptance and merging:
 
 1. Start all components with the shared configuration. Use dev mode and an ordinary amount for success; verify browser key secrecy and invalid-input handling.
 2. Repeat unchanged input after success/reload: same key and quote. To test conflicts, manually reuse the old key with changed input: the quote service returns 409 internally and the Web API returns generic 500. The UI normally derives a different key.
-3. Exercise both dev trigger amounts and a temporary random config with rate 1. Verify the same generic public failure, UI recovery, and distinct internal causes in logs. Confirm timeout handling with B's slow-vendor test and C's mocked timeout response; no production delay endpoint is needed.
+3. Exercise all six dev trigger amounts and a temporary random config with rate 1. Verify the same generic public failure, UI recovery, and distinct internal causes in logs. Confirm timeout handling with B's slow-vendor test and C's mocked timeout response; no production delay endpoint is needed.
 4. Smoke-check the CI profile, restore dev for local work, run both Go suites and the frontend build, and record browser checks and coverage.
 5. Finish `test/mock/quotevendor/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.

@@ -46,7 +46,7 @@
       "post": {
         "operationId": "generateCommissionQuote",
         "summary": "Generate a mock commission quote",
-        "description": "For POST requests, authenticate first, then validate the required idempotency-key header and JSON body. Atomically bind/check the key: changed valid input returns 409; an existing successful result is replayed unchanged. Otherwise apply exactly one configured failure mode, calculate a quote on success, and store it before returning. Failures retain only the input binding and can be retried. See x-idempotency. In random mode, return 503 with failureRate probability; all amounts follow the same rule. In loanAmount mode, exact amount 100400 returns 400 and 100429 returns 429; all other valid amounts succeed. Invalid authentication or input always takes precedence over simulated failures. The service performs no real rate limiting, artificial delay, persistence, or automatic retries. Amounts are dollars, not cents. The commission rate is a decimal fraction, not a percentage number.",
+        "description": "For POST requests, authenticate first, then validate the required idempotency-key header and JSON body. Atomically bind/check the key: changed valid input returns 409; an existing successful result is replayed unchanged. Otherwise apply exactly one configured failure mode, calculate a quote on success, and store it before returning. Failures retain only the input binding and can be retried. See x-idempotency. In random mode, fail with failureRate probability and uniformly choose one of HTTP 400, 401, 409, 429, 500, or 503; all amounts follow the same rule. In loanAmount mode, prefix each documented HTTP error status with 100 to form its exact trigger amount: 100400, 100401, 100409, 100429, 100500, or 100503. All other valid amounts succeed. Invalid authentication or input always takes precedence over simulated failures. The service performs no real rate limiting, artificial delay, persistence, or automatic retries. Amounts are dollars, not cents. The commission rate is a decimal fraction, not a percentage number.",
         "requestBody": {
           "required": true,
           "description": "Require one valid JSON object with integer loan amount and term, and an allowed risk band. Missing/null fields, wrong types including numeric strings, fractional amounts/terms, invalid ranges, and trailing JSON values return 400. Ignore extra fields. Do not round, clamp, or supply defaults to make invalid input valid.",
@@ -102,7 +102,7 @@
         },
         "responses": {
           "200": {
-            "description": "Generated quote. A fresh opaque quoteId is generated on the first success for a key; repeated equivalent requests return the stored successful quote unchanged. Rates are low=0.01, medium=0.02, high=0.03. Calculate commission cents as the integer loan amount times ratePercent (1, 2, or 3), then return AUD dollars; no rounding step is needed. Term is validated but does not affect the mock formula.",
+            "description": "Generated quote. A fresh opaque quoteId is generated on the first success for a key; repeated equivalent requests return the stored successful quote unchanged. Rates are low=0.01, medium=0.02, high=0.03. Multiply the decimal loan amount by the decimal commission rate to return exact AUD dollars; no rounding step is needed. Term is validated but does not affect the mock formula.",
             "content": {
               "application/json": {
                 "schema": {
@@ -135,7 +135,7 @@
             }
           },
           "400": {
-            "description": "INVALID_REQUEST: missing/invalid idempotency-key, malformed JSON, invalid request fields, or exact amount 100400 in loanAmount mode. Validation errors identify the field and reason; wording may vary.",
+            "description": "INVALID_REQUEST: missing/invalid idempotency-key, malformed JSON, or invalid request fields. Validation runs before simulation. Also simulated by exact amount \"100400\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -171,7 +171,7 @@
             }
           },
           "401": {
-            "description": "UNAUTHORIZED: api-key header is missing or does not match the configured key. Checked before POST body validation or failure simulation.",
+            "description": "UNAUTHORIZED: missing/invalid api-key, checked before body validation or simulation. Also simulated by exact amount \"100401\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -191,7 +191,7 @@
             }
           },
           "409": {
-            "description": "IDEMPOTENCY_CONFLICT: this key is bound to different validated input. Checked before failure simulation, including if the previous attempt failed.",
+            "description": "IDEMPOTENCY_CONFLICT: the key is bound to different validated input, checked before simulation even after a failed attempt. Also simulated by exact amount \"100409\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -207,7 +207,7 @@
             }
           },
           "429": {
-            "description": "TOO_MANY_REQUESTS: exact amount 100429 in loanAmount mode. This is deterministic simulation, not a real request counter. No Retry-After header is supplied.",
+            "description": "TOO_MANY_REQUESTS: simulated rate limit; no real request counter or Retry-After header. Also simulated by exact amount \"100429\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -227,7 +227,7 @@
             }
           },
           "500": {
-            "description": "INTERNAL_ERROR: unexpected local failure. Never expose internal details or credentials.",
+            "description": "INTERNAL_ERROR: unexpected local failure or simulation; never expose internal details or credentials. Also simulated by exact amount \"100500\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -247,7 +247,7 @@
             }
           },
           "503": {
-            "description": "VENDOR_UNAVAILABLE: selected by random failure simulation. Rate 1 always selects this response for authenticated, valid requests without a stored successful response; rate 0 never does.",
+            "description": "VENDOR_UNAVAILABLE: simulated temporary vendor unavailability. Also simulated by exact amount \"100503\" in loanAmount mode or selected uniformly from the six documented errors in random mode.",
             "content": {
               "application/json": {
                 "schema": {
@@ -398,8 +398,8 @@
     "workingDirectory": "test/mock/quotevendor/",
     "loading": "Select one file with the standard -config flag, defaulting to config/dev.json; use -config config/ci.json for CI. Selected config paths are relative to the mock service working directory; relative apiKeyFile paths resolve against the selected config directory. Read only the selected file once at startup; no profile merging. Restart the service after changes. All runtime settings, including port, come from the selected file; no environment-variable overrides. Failure simulation follows authentication, validation, and idempotency conflict checks; successful replays bypass it.",
     "modes": {
-      "random": "Require failureRate as a number from 0 through 1. Missing, null, wrong-type, and out-of-range rates fail startup; zero is valid. Amount triggers are disabled. Use 0 for deterministic success and 1 for deterministic 503 responses.",
-      "loanAmount": "failureRate is optional and completely ignored if present; do not decode or validate its value. Apply only the two exact amount triggers; other valid amounts succeed. No random failure simulation."
+      "random": "Require failureRate from 0 through 1. After authentication, validation and idempotency checks, fail with this probability; on failure, uniformly select one of HTTP 400, 401, 409, 429, 500 or 503. Rate 0 never simulates failure; rate 1 always simulates a documented error. Amount triggers are disabled. Successful replays bypass simulation.",
+      "loanAmount": "Ignore failureRate entirely. Prefix a documented three-digit HTTP error status with 100 to form an exact whole-dollar trigger, e.g. \"100401\" -> HTTP 401. Other valid amounts succeed. No random simulation."
     },
     "amountTriggers": [
       {
@@ -408,12 +408,32 @@
         "code": "INVALID_REQUEST"
       },
       {
+        "loanAmount": "100401",
+        "status": 401,
+        "code": "UNAUTHORIZED"
+      },
+      {
+        "loanAmount": "100409",
+        "status": 409,
+        "code": "IDEMPOTENCY_CONFLICT"
+      },
+      {
         "loanAmount": "100429",
         "status": 429,
         "code": "TOO_MANY_REQUESTS"
+      },
+      {
+        "loanAmount": "100500",
+        "status": 500,
+        "code": "INTERNAL_ERROR"
+      },
+      {
+        "loanAmount": "100503",
+        "status": 503,
+        "code": "VENDOR_UNAVAILABLE"
       }
     ],
-    "matching": "Only exact integer amounts 100400 and 100429 trigger errors; unlisted amounts such as 100430 and 100500 do not.",
+    "matching": "Match only exact amounts \"100400\", \"100401\", \"100409\", \"100429\", \"100500\", and \"100503\". Unlisted amounts such as \"100430\" succeed.",
     "startupErrors": "Missing or invalid port, unreadable/malformed config, missing or unsupported failureMode, missing apiKeyFile, or unreadable/empty API key file fail startup. In random mode only, missing, null, wrong-type, or out-of-range failureRate also fails startup. In loanAmount mode, failureRate is ignored. The configuration must still be valid JSON in either mode.",
     "examples": {
       "random": {
