@@ -9,16 +9,22 @@ import (
 	"time"
 
 	"commissionquote/internal/app"
-	"commissionquote/internal/config"
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if attr.Value.Kind() == slog.KindTime {
+				attr.Value = slog.TimeValue(attr.Value.Time().UTC())
+			}
+			return attr
+		},
+	})))
 
 	configPath := flag.String("config", "confg/dev.json", "path to application JSON configuration")
 	flag.Parse()
 
-	appConfig, err := config.LoadConfig(*configPath)
+	appConfig, err := app.LoadConfig(*configPath)
 	if err != nil {
 		os.Exit(1)
 	}

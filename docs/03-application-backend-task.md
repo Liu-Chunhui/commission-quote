@@ -4,17 +4,18 @@ Implement the browser-facing API and outbound vendor call. Read the [shared cont
 
 ## Scope
 
-Own `cmd/app/`, `internal/app/`, `internal/config/`, `internal/httpapi/`, `confg/`, and `api/webapi.openapi.json`. Start after the integration owner prepares the root module.
+Own `cmd/app/`, `internal/app/`, `internal/httpapi/`, `internal/integration/`, `confg/`, and `api/webapi.openapi.json`. Start after the integration owner prepares the root module.
 
 Do not modify A's service or C's UI. Keep the backend thin: no commission calculation, quote ID generation, failure simulation, idempotency store, repository layer, or single-implementation client interface. Coordinate API changes with the integration owner.
 
 ## Implementation context
 
-- Load application settings in `internal/config/config.go` using the standard library. Select the JSON file with `--config`; follow the [shared runtime configuration](01-development-approach.md#runtime-configuration). Configuration errors are logged once by the loader before startup exits.
+- Load application settings in `internal/app/config.go` using the standard library; keep its tests in `internal/app/config_test.go`. Select the JSON file with `--config`; follow the [shared runtime configuration](01-development-approach.md#runtime-configuration). Configuration errors are logged once by the loader before startup exits.
 - Validate at the incoming HTTP boundary. Forward the payload and idempotency key with the private vendor API key, using an actual `http.Client`.
+- Keep downstream calls in `internal/integration/`. `NewQuoteClient(baseURL, apiKey)` constructs the concrete client; `GenerateQuote(ctx, key, input)` accepts already-validated input and returns a validated quote or a safe error. Credential loading belongs to startup wiring, not the client. The supplied vendor contract's `apiKeyFile` setting describes the vendor's own startup configuration.
 - Apply the shared timeout/cancellation and public error boundary. Check external response decoding and required fields, close response bodies, and return quote fields unchanged; do not recalculate vendor business rules.
 - Handle the quote service's HTTP status and documented `error.code` internally, including invalid request, authentication failure, conflict, rate limit, unavailable service, and internal error. Record the failed operation and safe cause in logs; unknown codes, malformed error bodies, connection failures, invalid success payloads, and timeouts also produce the same public failure. Never forward upstream status, headers, code, message, or raw body. No per-error retry behavior is required.
-- Missing required API key stops startup. Keep runtime wiring in `cmd/app/main.go`, routing and request logging in `internal/app/`, configuration in `internal/config/`, and HTTP handlers in `internal/httpapi/`. Keep tests beside the implementation.
+- Missing required API key stops startup. Keep runtime wiring in `cmd/app/main.go`, configuration, routing, and request logging in `internal/app/`, and HTTP handlers in `internal/httpapi/`. Keep tests beside the implementation.
 
 ## Acceptance
 
@@ -38,7 +39,7 @@ Use synthetic test credentials. A shorter timeout is acceptable through existing
 After implementation, run from the repository root, with the API key supplied privately:
 
 ```sh
-gofmt -w cmd/app internal/app internal/config internal/httpapi
+gofmt -w cmd/app internal/app internal/httpapi internal/integration
 make server test
 go tool cover -html=gen/coverage.out
 make server build
@@ -50,3 +51,20 @@ The build writes `bin/app`; tests write `gen/coverage.out`. Start the built serv
 Run `make clean` to remove `bin/`, `gen/`, legacy root build/coverage outputs (`app`, `coverage.out`, `coverage.html`), and the frontend's generated files and dependencies. It also stops this worktree's Vite processes; source files and configuration are preserved.
 
 Production Go files target **greater than 90% statement coverage per file**, excluding `main.go` and test code. Aggregate covered/total statements per file; package averages are insufficient. Explain shortfalls without adding test-only production abstractions. This root test command excludes A's independent module.
+
+## Integration client increment
+
+Run `go test ./internal/integration -count=1 -v` without a running vendor. The tests call the real client against controlled `httptest` HTTP servers:
+
+| Input or controlled dependency | Expected outcome |
+| --- | --- |
+| `4001/36/low`, response `opaque-id/0.01/40.01` | Exact request fields and headers; unchanged quote; one call for each repeated attempt |
+| All risk bands and mock trigger amounts | Forward normally and preserve supplied totals without recalculation |
+| Each documented 400/401/409/429/500/503 error, unknown status/code, malformed or invalid response | Empty quote and `unable to generate a quote`; safe internal diagnostic only |
+| Missing/wrong synthetic API key, connection failure, truncated body, or redirect | Fail without exposing credentials or following redirects |
+| Delayed headers/body or canceled context | Timeout/cancellation reaches the outbound request; no automatic retry, including transport replay |
+| Success and failure with request ID `request-42` | INFO start/completion with status and duration; exactly one ERROR on failure; no raw upstream detail or key in logs |
+
+This increment supplies only the downstream client. Startup credential wiring and the `/api/quotes` handler remain separate work; real-service end-to-end integration has not been performed. The client tests were derived with AI assistance from the supplied downstream OpenAPI contract and shared application rules.
+
+Verified: the cases above, `make server test`, `go test -race ./...`, `go vet ./...`, and `make server build` passed. `internal/integration/quote.go` has 100% statement coverage; `type.go` contains only type declarations. The pre-existing unused `internal/app/health.go` remains at 0% coverage; the routed handler in `internal/httpapi/health.go` is covered. `main.go` remains exempt.

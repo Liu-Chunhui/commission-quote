@@ -14,7 +14,7 @@ These requirements apply to all work in this repository.
 ## Project Layout
 
 - Follow [Standard Go Project Layout](https://github.com/golang-standards/project-layout/blob/master/README.md).
-- Place executable entry points in `cmd/`, the frontend in `web/`, and documentation in `docs/`. Keep `cmd/app/main.go` limited to startup wiring. Use `internal/app/` for routing and request logging, `internal/config/` for configuration, and `internal/httpapi/` for HTTP handlers. Keep tests beside the implementation; tests that exercise routing across packages may use an external test package.
+- Place executable entry points in `cmd/`, the frontend in `web/`, and documentation in `docs/`. Keep `cmd/app/main.go` limited to startup wiring. Use `internal/app/` for configuration, routing, and request logging, `internal/httpapi/` for HTTP handlers, and `internal/integration/` for downstream dependency calls. Keep configuration in `internal/app/config.go` and its tests in `internal/app/config_test.go`. Keep other tests beside the implementation; tests that exercise routing across packages may use an external test package.
 - Keep the four planning/task documents, human-readable API contract, design notes, run instructions, and `docs/README.md` in the root `docs/`. Place machine-readable API specifications in the owning service's `api/` directory, following Standard Go Project Layout; the application specification belongs in `api/webapi.openapi.json`, and the mock specification belongs in `test/mock/commissionquote/api/`. Keep the root `AGENTS.md` as the tool-discovered repository instruction file.
 - Keep the mock vendor as an independently runnable service under `test/mock/commissionquote/`, with its own Go module, `api/` specification, `cmd/vendor/` entry point, and `internal/vendor/` implementation. Apply the Go project layout relative to this independent service root. Keep its task document in `docs/02-mock-vendor-task.md` alongside the other planning documents. It communicates with the application only over HTTP; neither service imports the other's code.
 - Treat the mock quote service and application backend as separate tasks with independent implementation, tests, and acceptance. The backend task must not implement or maintain the mock service. Connecting the two running services belongs to the final integration phase.
@@ -36,10 +36,12 @@ These requirements apply to all work in this repository.
 - Place local `var` declarations at the beginning of their function, including anonymous functions.
 - Separate independent `if` blocks with a blank line for readability. Keep an error check directly adjacent to the operation it checks.
 - Prefix unexported package-level constants and variables with `_`, except error variables, which use `err` as specified by the Uber Go Style Guide.
+- Use UTC for all timestamps throughout the project, including logs, API responses, and generated data. In Go, use `time.Now().UTC()` when creating timestamps and convert existing timestamps with `.UTC()` before output.
 
 ### Logging
 
 - Use standard-library `log/slog` for structured logs to stderr.
+- Emit all structured log timestamps in UTC with the `Z` suffix, including slog's automatic `time` field.
 - Log errors at `ERROR` level where they are raised or first detected. If a library or remote service returns an error, log it at the calling boundary with the failed operation and a safe explanation of the cause.
 - Log each error once within a service. Higher layers may wrap, return, or map an already-logged error; do not log it again merely because it was propagated. Request-completion logs remain separate lifecycle events.
 - Assign a `request_id` when a request enters the service and carry it through the request context. Include it in handler, business-operation, and outbound vendor-call logs so concurrent requests can be followed independently. It identifies one HTTP attempt, not the idempotency key shared by retries.
