@@ -80,7 +80,7 @@ The root Makefile also provides these commands (GNU Make and `lsof` required):
 | `make web dev` | Start only the frontend in the foreground; Ctrl+C stops it |
 | `make web build` | Type-check and build the frontend |
 | `make web test` | Run the browser acceptance suite; install Chromium as described below on first use |
-| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, and `web/playwright-report` |
+| `make clean` | Stop this worktree's Vite processes and remove `web/node_modules`, `web/dist`, `web/test-results`, `web/playwright-report`, backend `bin/` and `gen/`, and legacy root `app`, `coverage.out`, and `coverage.html` |
 
 The web commands install locked dependencies automatically when missing or when the manifests change. Cleanup preserves source files, the lockfile, other worktrees, and shared npm/Playwright caches.
 

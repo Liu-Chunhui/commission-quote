@@ -1,18 +1,38 @@
 .DEFAULT_GOAL := help
-.PHONY: help web dev build test clean
+.PHONY: help web server dev build test clean
 
 help:
 	@printf '%s\n' 'make web dev    Start the frontend only' \
 		'make web build  Build the frontend' \
 		'make web test   Run frontend browser tests' \
-		'make clean      Stop Vite and remove frontend dependencies and generated files'
+		'make server dev    Start the backend with confg/dev.json' \
+		'make server build  Build the backend to bin/app' \
+		'make server test   Run backend tests with coverage in gen/coverage.out' \
+		'make clean      Stop Vite and remove dependencies and generated files'
 
-# Make treats "web" and the following action as separate targets.
-web:
+# Make treats the component and the following action as separate targets.
+web server:
 	@:
 
+ifneq ($(filter server,$(MAKECMDGOALS)),)
+ifneq ($(filter web,$(MAKECMDGOALS)),)
+$(error Choose either web or server for each make invocation)
+endif
+
+dev:
+	go run ./cmd/app --config confg/dev.json
+
+build:
+	mkdir -p bin
+	go build -o bin/app ./cmd/app
+
+test:
+	mkdir -p gen
+	go test ./... -coverpkg=./... -coverprofile=gen/coverage.out
+else
 dev build test: web/node_modules/.package-lock.json
 	npm --prefix web run $@
+endif
 
 # Install once, and reinstall when either dependency manifest changes.
 web/node_modules/.package-lock.json: web/package.json web/package-lock.json
@@ -26,4 +46,5 @@ clean:
 				kill "$$pid" ;; \
 		esac; \
 	done
-	rm -rf web/node_modules web/dist web/test-results web/playwright-report
+	rm -rf bin gen web/node_modules web/dist web/test-results web/playwright-report
+	rm -f app coverage.out coverage.html

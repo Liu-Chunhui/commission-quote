@@ -39,12 +39,14 @@ After implementation, run from the repository root, with the API key supplied pr
 
 ```sh
 gofmt -w cmd/app internal/app internal/config internal/httpapi
-go test ./... -coverpkg=./... -coverprofile=/tmp/commission-app-coverage.out
-go tool cover -html=/tmp/commission-app-coverage.out
-go build ./cmd/app
-go run ./cmd/app --config confg/dev.json
+make server test
+go tool cover -html=gen/coverage.out
+make server build
+make server dev
 ```
 
-Use `--config confg/ci.json` for the CI profile. Omitting `--config` selects the dev profile.
+The build writes `bin/app`; tests write `gen/coverage.out`. Start the built server with `./bin/app --config confg/ci.json` for the CI profile. Omitting `--config` selects the dev profile.
+
+Run `make clean` to remove `bin/`, `gen/`, legacy root build/coverage outputs (`app`, `coverage.out`, `coverage.html`), and the frontend's generated files and dependencies. It also stops this worktree's Vite processes; source files and configuration are preserved.
 
 Production Go files target **greater than 90% statement coverage per file**, excluding `main.go` and test code. Aggregate covered/total statements per file; package averages are insufficient. Explain shortfalls without adding test-only production abstractions. This root test command excludes A's independent module.
