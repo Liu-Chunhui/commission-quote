@@ -1,0 +1,112 @@
+@font-face {
+  font-family: Muli;
+  src: url('/brand/muli.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Muli;
+  src: url('/brand/muli-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  font-family: Muli, Arial, sans-serif;
+  color: #2b2d32;
+  background: #f6f5f3;
+  font-synthesis: none;
+  line-height: 1.5;
+  --brand: #870e40;
+  --brand-dark: #58003a;
+  --action: #de313b;
+  --muted: #64616a;
+  --border: #e5dfe3;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.masthead { background: #fff; border-bottom: 1px solid var(--border); }
+.masthead-content {
+  max-width: 1200px;
+  min-height: 88px;
+  margin: 0 auto;
+  padding: 20px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.brand { display: flex; align-items: center; gap: 28px; }
+.brand img { display: block; width: 210px; height: auto; }
+.workspace-name { border-left: 1px solid var(--border); padding-left: 28px; color: var(--brand); font-size: 14px; font-weight: 700; }
+.internal-label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+main { max-width: 660px; margin: 48px auto 32px; }
+h1 { margin: 0 0 12px; color: var(--brand-dark); font-size: 2rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.025em; }
+h2 { margin: 0 0 24px; color: var(--brand-dark); font-size: 1.125rem; }
+.page-heading { margin-bottom: 28px; }
+.page-heading p { margin: 0; color: var(--muted); font-size: 15px; }
+
+form { padding: 32px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { padding: 0; color: var(--brand-dark); font-size: 1.125rem; font-weight: 700; }
+.form-note { margin: 6px 0 28px; color: var(--muted); font-size: 13px; }
+.field { margin-bottom: 24px; }
+label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 700; }
+
+input, select, button {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1px solid #91858e;
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+}
+
+input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--brand); }
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 3px;
+}
+
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: #b21d2d; background: #fffafa; }
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+button { margin-top: 4px; border-color: var(--action); border-radius: 28px; background: var(--action); color: #fff; font-weight: 700; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #c82c35; background: #c82c35; }
+:disabled { cursor: not-allowed; }
+fieldset:disabled { opacity: 0.65; }
+
+.error { margin: 16px 0 0; padding: 16px 20px; border: 1px solid #edc3c8; border-left: 4px solid #b21d2d; border-radius: 6px; background: #fff5f5; color: #971a28; font-size: 14px; }
+.status { margin: 16px 0 0; color: var(--brand); font-size: 14px; }
+.error:empty, .status:empty { margin: 0; padding: 0; border: 0; }
+
+.quote { margin-top: 16px; padding: 28px 32px; border: 1px solid var(--border); border-top: 3px solid var(--brand); border-radius: 8px; background: #fff; }
+dl { margin: 0; }
+dl > div + div { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-top: 18px; }
+dt { color: var(--muted); font-size: 13px; }
+dd { margin: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.total { padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.total dd { margin-top: 6px; color: var(--brand-dark); font-size: 2rem; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+.quote-id { max-width: 70%; text-align: right; font-weight: 400; }
+.page-footer { padding: 0 24px 28px; color: var(--muted); text-align: center; font-size: 12px; }
+
+@media (max-width: 700px) {
+  .masthead-content { min-height: 76px; padding: 20px; }
+  .brand img { width: 175px; }
+  .workspace-name { display: none; }
+  main { margin: 32px 20px 24px; }
+  h1 { font-size: 1.75rem; }
+  .page-heading { margin-bottom: 24px; }
+  form, .quote { padding: 24px 20px; }
+  .hint { font-size: 13px; }
+  .quote-id { max-width: 65%; }
+  .total dd { font-size: 1.75rem; }
+}
