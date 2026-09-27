@@ -45,10 +45,10 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	slog.Info("HTTP server starting", "service", "app", "operation", "serve", "port", appConfig.Port)
+	slog.Info("HTTP server starting", "service", "commission-quote-api", "operation", "serve", "port", appConfig.Port)
 
 	if err := server.ListenAndServe(); err != nil {
-		slog.Error("HTTP server stopped", "service", "app", "operation", "serve",
+		slog.Error("HTTP server stopped", "service", "commission-quote-api", "operation", "serve",
 			"cause", "unable to listen or serve HTTP")
 		os.Exit(1)
 	}
