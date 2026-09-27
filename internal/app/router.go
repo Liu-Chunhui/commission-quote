@@ -7,7 +7,7 @@ import (
 	"commissionquote/internal/integration/commissionquote"
 )
 
-func NewRouter(quoteClient *commissionquote.QuoteClient) *chi.Mux {
+func NewRouter(quoteClient commissionquote.Quoter) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(logRequest)
 	router.Get("/health", httpapi.Health)
