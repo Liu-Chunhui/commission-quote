@@ -4,6 +4,8 @@ Read this document first, then your task: [A: commission quote](02-commission-qu
 
 This document defines shared requirements. Each task document records its implementation and verified handoff separately; passing independent task checks does not establish end-to-end integration. Inspect existing files before creating them.
 
+**Planned extension:** [BOOST10 broker loyalty bonus](#boost10-broker-loyalty-bonus-planned) defines the new work split into [web](05-boost10-web-task.md), [service](06-boost10-service-task.md), and [mock](07-boost10-mock-task.md). Its proposed contract is a documentation draft, not implemented or verified behavior. Existing acceptance results refer to the original application.
+
 ## Development plan
 
 Define the APIs and task boundaries first, develop the three parts in parallel, then integrate.
@@ -159,3 +161,93 @@ After independent acceptance and merging:
 3. Exercise all six dev trigger amounts and a temporary random config with rate 1. Verify the same generic public failure, UI recovery, and distinct internal causes in logs. Confirm timeout handling with B's slow-vendor test and C's mocked timeout response; no production delay endpoint is needed.
 4. Smoke-check the CI profile, restore dev for local work, run both Go suites and the frontend build, and record browser checks and coverage.
 5. Finish `test/mock/quotevendor/README.md` with prerequisites, environment setup, startup/tests, assumptions, limitations, and AI usage. Verify a clean start and disclose unresolved gaps. Publishing or sending the submission requires separate user authorization.
+
+## BOOST10 broker loyalty bonus (planned)
+
+### Requirement and draft decisions
+
+Add an optional promo code for accredited broker partners. `BOOST10` adds 10% of the original commission to the payout. Show the original commission, bonus amount, and final commission separately.
+
+The requirement does not define calculation ownership, code normalization, invalid-code behavior, rounding, or accreditation checks. This draft proposes:
+
+- The application service calculates the bonus after receiving a successful, validated vendor quote. The vendor remains the source of the original commission; the web displays the returned breakdown.
+- Trim surrounding ASCII whitespace and uppercase ASCII letters in the promo code at the web and application boundaries. Omitted, empty, or whitespace-only strings mean no promo. The only supported non-empty normalized value is `BOOST10`; reject other values with 400 `INVALID_REQUEST` and message `Promo code must be BOOST10 or left blank.` Reject null and non-string values with the same error. Invalid promo input makes no vendor call.
+- Treat broker accreditation as a precondition supplied by the existing business workflow. This feature does not prove accreditation; do not introduce a checkbox, broker database, login, or accreditation lookup. If the app must enforce eligibility itself, that requires a separate identity/eligibility contract before release.
+- Apply the bonus once per quote calculation. Round the bonus to two decimal places using decimal half-up rounding, then add that rounded amount to the original commission. No bonus cap, stacking, expiry, or promo configuration is introduced.
+
+These are proposed decisions, not additional requirements supplied by the business. Resolve any requested changes in this shared section before the three implementations diverge.
+
+### Application contract
+
+Extend only `POST /api/quotes` with optional `promoCode`. Existing loan validation, headers, routes, authentication boundaries, and generic downstream-error handling remain applicable.
+
+```json
+{
+  "loanAmount": "10000",
+  "loanTermInMonths": 36,
+  "riskBand": "medium",
+  "promoCode": "BOOST10"
+}
+```
+
+Successful application responses always contain the existing three fields plus `bonusAmount` and `finalCommission`, including when no promo is supplied:
+
+```json
+{
+  "quoteId": "quote-example-standard",
+  "commissionRate": "0.02",
+  "totalCommission": "200",
+  "bonusAmount": "20",
+  "finalCommission": "220"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `quoteId` | Unchanged opaque vendor quote ID |
+| `commissionRate` | Unchanged base commission rate; do not increase it by 10 percentage points |
+| `totalCommission` | Original vendor commission, preserving its existing meaning |
+| `bonusAmount` | Rounded 10% bonus for BOOST10; otherwise `"0"` |
+| `finalCommission` | Original commission plus the rounded bonus |
+
+All monetary fields remain decimal strings with at most two decimal places. Display AUD with two decimal places. Use the existing decimal libraries and exact string constants: `bonusAmount = roundHalfUp(totalCommission * "0.10", 2)` for BOOST10, otherwise zero; `finalCommission = totalCommission + bonusAmount`. Calculate from the vendor total, never from the loan amount, a previously boosted result, or a recalculated vendor rate.
+
+The vendor request/response remains the existing three-field contract. The application sends only loan amount, term, and risk to the vendor; it does not forward `promoCode` or require bonus fields in the vendor response. Its public DTO therefore differs from the vendor DTO. The existing rule that both APIs have identical complete schemas and the original Task B prohibition on all commission calculation are superseded only for this application-owned bonus. Base loan fields and vendor quote fields stay synchronized.
+
+The service task owns the Web OpenAPI update, including all success examples, promo validation, and the distinction from the vendor schema. Until then, these draft examples define the proposed extension; existing OpenAPI files still describe the original application. Web work can use local test fixtures from this section without waiting for that update. Deploy the completed web and service changes together.
+
+### Idempotency and failure behavior
+
+Keep the existing UUIDv5 name `loanAmount|loanTermInMonths|riskBand`, namespace, and example key. It identifies the base vendor quote. `promoCode` is not part of that key or the vendor's input binding.
+
+Changing only the promo keeps the same key and base quote ID. The application calculates the breakdown from the incoming normalized promo and the original vendor quote on every successful request; it stores no payout state. Adding, removing, retrying, or reloading BOOST10 must never compound the bonus. A different loan amount, term, or risk still changes the key; manually reusing a key for changed loan fields still produces the existing vendor conflict and generic application 500.
+
+Invalid promo input follows application 400 validation behavior. All vendor failures, timeouts, and malformed responses remain generic 500 failures with no partial breakdown. Existing mock failure modes and successful replay behavior remain unchanged.
+
+### Shared acceptance examples
+
+All rows use term 36. Values below are decimal-string API values; trailing `.00` is optional on the wire.
+
+| Loan amount / risk | Promo input | Original | Bonus | Final |
+| --- | --- | --- | --- | --- |
+| `10000` / medium | Omitted, empty, or ASCII whitespace | `200` | `0` | `200` |
+| `10000` / medium | `BOOST10` | `200` | `20` | `220` |
+| `10000` / medium | ` boost10 ` | `200` | `20` | `220` |
+| `4001` / low | `BOOST10` | `40.01` | `4` | `44.01` |
+| `4005` / low | `BOOST10` | `40.05` | `4.01` | `44.06` |
+| `10003` / medium | `BOOST10` | `200.06` | `20.01` | `220.07` |
+| `10000000` / high | `BOOST10` | `300000` | `30000` | `330000` |
+
+Also check unsupported `BOOST20`, null/non-string promo values, same-input replay, promo removal, loading, validation, failure recovery, and stale-result clearing. A promo is an optional input; the three loan fields remain required.
+
+### Parallel ownership and integration
+
+| Part | Owned files | Independent dependency |
+| --- | --- | --- |
+| [Web](05-boost10-web-task.md) | `web/` and its task document | Intercepted `/api/quotes` responses using the above breakdown |
+| [Service](06-boost10-service-task.md) | Root application Go code/tests, `api/webapi.openapi.json`, and its task document | Controlled `httptest` vendor responses with the original three fields |
+| [Mock](07-boost10-mock-task.md) | `test/mock/quotevendor/` and its task document | Real mock handler with deterministic configuration; no application or web |
+
+Give each part a separate branch/worktree. Each owner changes only its scope, records actual acceptance results, and reports contract questions here. Mock work is primarily verification: reuse existing behavior and add only missing base-quote cases; no promo engine or new simulation mode is needed.
+
+The integration owner maintains this shared section and reconciles the original task documents and repository guidance with the completed extension. After independent acceptance and merging, verify the real browser → service → mock flow for no promo, BOOST10, rounding, promo removal/reload, and a dev failure trigger with BOOST10. Confirm unchanged key/base quote ID on promo-only changes and no credentials in the browser. Update the combined README and actual handoff results after those checks; this draft records no implementation acceptance.
