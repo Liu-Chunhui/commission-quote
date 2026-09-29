@@ -17,10 +17,10 @@ import (
 var _loanAmountPattern = regexp.MustCompile(`^[1-9][0-9]{3,7}$`)
 
 type QuoteHandler struct {
-	client *commissionquote.QuoteClient
+	client commissionquote.Quoter
 }
 
-func NewQuoteHandler(client *commissionquote.QuoteClient) *QuoteHandler {
+func NewQuoteHandler(client commissionquote.Quoter) *QuoteHandler {
 	return &QuoteHandler{client: client}
 }
 

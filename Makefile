@@ -10,7 +10,7 @@ help:
 		'make web test      Run frontend browser tests' \
 		'make server dev    Start the backend with confg/dev.json' \
 		'make server build  Build the backend to bin/app' \
-		'make server test   Run backend tests with coverage in gen/coverage.out' \
+		'make server test   Report backend coverage excluding test/; save to gen/coverage.out' \
 		'make quote dev     Start the mock quote service with config/dev.json' \
 		'make quote build   Build the mock quote service to test/mock/quotevendor/bin/quote' \
 		'make clean         Stop Vite and remove dependencies and generated files'
@@ -74,7 +74,8 @@ build:
 
 test:
 	mkdir -p gen
-	go test ./... -coverpkg=./... -coverprofile=gen/coverage.out
+	go test ./... -coverpkg=./cmd/...,./internal/... -coverprofile=gen/coverage.out
+	@go tool cover -func=gen/coverage.out | tail -n 1
 else
 dev build test: web/node_modules/.package-lock.json
 	npm --prefix web run $@
