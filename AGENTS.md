@@ -50,6 +50,49 @@ These requirements apply to all work in this repository.
 - Keep messages concise and explain what happened. Do not log every function call, full request/response bodies, or all headers. Never log credentials, API keys, or other private secrets; sanitize error details before logging.
 - During backend verification, follow a successful request and a failed request through the logs. Confirm the sequence, failed operation/cause, final HTTP status, and timing are clear, and that error propagation does not produce duplicate error records. No custom logging framework or abstraction is required.
 
+## Database Implementation Playbook
+
+Use this playbook when a requested feature requires persistence, to reduce repeated setup and debugging. The current challenge does not require a database; mock idempotency state remains in memory under the existing contract.
+
+### Default Approach
+
+- Unless the task or existing implementation requires otherwise, use PostgreSQL, Go `database/sql` with the pgx stdlib adapter, explicit parameterized SQL, and dbmate migrations. Reuse existing dependencies and patterns before adding alternatives; do not introduce an ORM or generic repository framework.
+- Keep connection setup in `internal/database/` and migrations in `schema/database/migrations/`. Use the repository/entity responsibilities below. Struct tags alone do not map SQL results; scan fields explicitly.
+
+### Required Repository and Entity Responsibilities
+
+- Use the call direction `handler/service -> repository -> entity functions -> database`. Application callers perform queries and writes through repository methods; they must not call entity persistence functions or execute SQL directly. Startup wiring may create and inject the shared database pool.
+- `internal/database/repository/` is the application-facing persistence API. Give methods meaningful operation names, accept and return application models, coordinate entity calls, map their results, and own transaction boundaries. Keep SQL execution and row scanning in entity functions rather than duplicating them in repository methods.
+- `internal/database/entity/` owns table row types and concrete persistence functions for the required inserts, updates, and queries, including joins. These functions execute parameterized SQL and map rows; they do not import the repository or own business workflows. Add only operations needed by the task, not generic CRUD scaffolding.
+- Pass context and the repository-selected database or transaction into entity functions. For an atomic operation, every participating entity function must use the same transaction; entity functions must not open a separate connection, begin a nested transaction, or commit independently. Use concrete `*sql.DB` or `*sql.Tx` parameters where sufficient; introduce a small shared SQL executor interface only when an actual function needs both.
+- Verify persistence behavior through the repository's public methods, including real PostgreSQL write/read and rollback checks. This keeps external callers independent of SQL placement and catches errors across the repository/entity boundary.
+
+### Establish the Database Contract First
+
+- Before writing queries, define the tables and relationships, business uniqueness, ID generation, nullability, decimal precision/scale, timestamp semantics, duplicate behavior, and transaction boundary. Record these decisions briefly with the schema/run instructions; ask only about unresolved business choices.
+- Use primary keys, foreign keys, `NOT NULL`, unique constraints, and relevant `CHECK` constraints to enforce invariants. Match foreign-key types to their primary keys. Add indexes for actual lookups. Use UUIDv5 when deterministic identity is needed, with this project's namespace and documented key components.
+- Keep money exact through decimal strings/decimal types and PostgreSQL `NUMERIC`/`DECIMAL`; choose precision and scale from the required range. Define timestamp storage and source timezone explicitly and preserve UTC throughout. Do not treat raw source timestamp strings as normalized UTC without validation and conversion.
+
+### Implement Using These Patterns
+
+- Create one shared `*sql.DB` at startup and close it at shutdown. Set the session timezone for every pooled connection, use a timeout-bound `PingContext`, and close the pool if initialization fails. Follow this repository's server-side configuration and secret rules; never print connection strings or raw driver errors that may contain credentials.
+- Pass the caller's context through `ExecContext`, `QueryContext`, `QueryRowContext`, and `BeginTx`. Bind values with placeholders; never interpolate user input into SQL. Select columns explicitly and keep their order aligned with `Scan`. Handle NULL with appropriate nullable types, distinguish `sql.ErrNoRows` from operational failures, close rows, and check `rows.Err()`.
+- Group writes that must succeed together in one transaction: `BeginTx`, deferred `Rollback`, all writes through the transaction, then check `Commit`. Choose the feature's atomic unit explicitly, including whether partial success is allowed.
+- Enforce duplicate behavior with a unique constraint and the intended conflict action, rather than a check-then-insert sequence. Use `ON CONFLICT DO NOTHING` plus `RowsAffected` only when the requirement defines duplicates as no-ops; otherwise compare or reject conflicting input.
+- Enforce state transitions in the UPDATE predicate and inspect `RowsAffected`. When repeated completion must be idempotent, permit the same final status and preserve the original completion time with `COALESCE`. If failure records must survive a rollback, persist them separately afterward, with any referenced parent already committed.
+- Map stored data on reads without repeating business validation. Preserve query, scan, and iteration error handling. For nested results, use ordered joins and `LEFT JOIN` for optional children; retain the distinction between a missing child and a zero-valued child. Log failures once with safe operation context under this repository's logging rules.
+
+### Migrations and Verification Before Handoff
+
+- Use timestamp-prefixed dbmate migrations with explicit up/down sections. Keep SQL, model mappings, and migrations synchronized; add a new migration for a schema already in use rather than rewriting migration history. Let dbmate generate schema snapshots. Apply migrations before starting code that requires them.
+- Prove the smallest complete path against an isolated PostgreSQL database early: connect, apply migrations, write through the real repository, then read back. Do this before expanding the feature so configuration, SQL, and type-mapping errors surface immediately.
+- Cover the applicable failure cases: duplicate writes, rollback without partial data, missing rows, NULL fields, exact decimals, timestamps, and query failures. SQL mocks can check Go control flow, but do not replace real PostgreSQL checks for SQL syntax, constraints, migrations, and driver conversions. Exercise a migration rollback only on a disposable database.
+- Provide reproducible setup, migration, startup, and test commands with expected outcomes and actual results. Use secret references rather than credential values.
+
+### Debug in Dependency Order
+
+- Check the selected configuration and target database first, then connectivity/authentication, migration state, SQL and bound argument types, `Scan` order/nullability, and finally transaction/constraint behavior. Inspect schema and safe error context before changing code; do not reset data, weaken constraints, or add retries to hide an unexplained failure.
+
 ## API Design
 
 - Preserve the vendor contract's exact JSON field names:
