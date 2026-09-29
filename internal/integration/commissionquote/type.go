@@ -1,6 +1,14 @@
 package commissionquote
 
-import "github.com/shopspring/decimal"
+import (
+	"context"
+
+	"github.com/shopspring/decimal"
+)
+
+type Quoter interface {
+	GenerateQuote(ctx context.Context, key string, input QuoteRequest) (QuoteResponse, error)
+}
 
 type QuoteRequest struct {
 	LoanAmount       decimal.Decimal `json:"loanAmount"`

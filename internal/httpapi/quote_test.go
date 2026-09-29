@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,11 @@ import (
 
 	"commissionquote/internal/app"
 	"commissionquote/internal/integration/commissionquote"
+	mockcommissionquote "commissionquote/test/gomock"
+
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shopspring/decimal"
+	"go.uber.org/mock/gomock"
 )
 
 const _validQuoteBody = `{"loanAmount":"10000","loanTermInMonths":36,"riskBand":"medium"}`
@@ -23,11 +29,16 @@ const _validQuoteBody = `{"loanAmount":"10000","loanTermInMonths":36,"riskBand":
 func TestQuoteDecimalPrecision(t *testing.T) {
 	const responseBody = `{"quoteId":"exact-cents","commissionRate":"0.02","totalCommission":"9007199254740993.01"}`
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, responseBody)
-	}))
-	defer server.Close()
-	router := app.NewRouter(commissionquote.NewQuoteClient(quoteHTTPClient(), server.URL, "test-only-key"))
+	client := mockcommissionquote.NewMockQuoter(gomock.NewController(t))
+	input := commissionquote.QuoteRequest{LoanAmount: decimal.NewFromInt(10000), LoanTermInMonths: 36, RiskBand: "medium"}
+	// Eq checks the validated input; Return supplies the dependency's result.
+	client.EXPECT().GenerateQuote(gomock.Any(), "decimal-precision", gomock.Eq(input)).
+		Return(commissionquote.QuoteResponse{
+			QuoteID:         "exact-cents",
+			CommissionRate:  decimal.RequireFromString("0.02"),
+			TotalCommission: decimal.RequireFromString("9007199254740993.01"),
+		}, nil).Times(1)
+	router := app.NewRouter(client)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, quoteRequest(_validQuoteBody, "decimal-precision"))
 	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != responseBody {
@@ -35,14 +46,17 @@ func TestQuoteDecimalPrecision(t *testing.T) {
 	}
 }
 
-func TestQuoteInvalidRequest(t *testing.T) {
-	var calls atomic.Int32
+func TestQuoteDependencyError(t *testing.T) {
+	client := mockcommissionquote.NewMockQuoter(gomock.NewController(t))
+	// Return can also simulate a dependency failure without an HTTP server.
+	client.EXPECT().GenerateQuote(gomock.Any(), "key", gomock.Any()).
+		Return(commissionquote.QuoteResponse{}, errors.New("test dependency failure")).Times(1)
+	response := httptest.NewRecorder()
+	app.NewRouter(client).ServeHTTP(response, quoteRequest(_validQuoteBody, "key"))
+	assertQuoteError(t, response, http.StatusInternalServerError, "INTERNAL_ERROR")
+}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-	}))
-	defer server.Close()
-	router := app.NewRouter(commissionquote.NewQuoteClient(quoteHTTPClient(), server.URL, "test-only-key"))
+func TestQuoteInvalidRequest(t *testing.T) {
 	cases := []struct {
 		name        string
 		body        string
@@ -99,16 +113,16 @@ func TestQuoteInvalidRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			client := mockcommissionquote.NewMockQuoter(gomock.NewController(t))
+			// Times(0) forbids dependency calls when validation fails.
+			client.EXPECT().GenerateQuote(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			router := app.NewRouter(client)
 			request := quoteRequest(tc.body, tc.key)
 			request.Header.Set("Content-Type", tc.contentType)
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			assertQuoteError(t, response, http.StatusBadRequest, "INVALID_REQUEST")
 		})
-	}
-
-	if calls.Load() != 0 {
-		t.Fatalf("invalid requests made %d downstream calls", calls.Load())
 	}
 }
 
@@ -191,6 +205,32 @@ func TestQuoteLogs(t *testing.T) {
 			t.Log(logs.String())
 		})
 	}
+}
+
+func TestQuoteRequestContext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	client := mockcommissionquote.NewMockQuoter(gomock.NewController(t))
+	// DoAndReturn inspects arguments and computes the result at call time.
+	client.EXPECT().GenerateQuote(gomock.Any(), "key", gomock.Any()).
+		DoAndReturn(func(callContext context.Context, _ string, _ commissionquote.QuoteRequest) (commissionquote.QuoteResponse, error) {
+			if got, ok := callContext.Deadline(); !ok || !got.Equal(deadline) {
+				t.Error("request deadline was not forwarded")
+			}
+
+			if middleware.GetReqID(callContext) == "" {
+				t.Error("request ID was not forwarded")
+			}
+			cancel()
+			if !errors.Is(callContext.Err(), context.Canceled) {
+				t.Error("request cancellation was not forwarded")
+			}
+			return commissionquote.QuoteResponse{}, callContext.Err()
+		}).Times(1)
+	response := httptest.NewRecorder()
+	app.NewRouter(client).ServeHTTP(response, quoteRequest(_validQuoteBody, "key").WithContext(ctx))
+	assertQuoteError(t, response, http.StatusInternalServerError, "INTERNAL_ERROR")
 }
 
 func TestQuoteSuccess(t *testing.T) {

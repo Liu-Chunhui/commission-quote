@@ -16,6 +16,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var _ Quoter = (*QuoteClient)(nil)
+
 var errQuoteFailed = errors.New("unable to generate a quote")
 var _commissionPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]{1,2})?$`)
 
@@ -26,7 +28,7 @@ type QuoteClient struct {
 }
 
 // NewQuoteClient requires a non-nil HTTP client with a timeout and redirects disabled.
-func NewQuoteClient(httpClient *http.Client, baseURL, apiKey string) *QuoteClient {
+func NewQuoteClient(httpClient *http.Client, baseURL, apiKey string) Quoter {
 	return &QuoteClient{
 		httpClient: httpClient,
 		quoteURL:   strings.TrimRight(baseURL, "/") + "/quotes",
